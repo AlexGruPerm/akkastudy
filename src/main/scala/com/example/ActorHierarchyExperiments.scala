@@ -1,7 +1,6 @@
 package com.example
 
-import akka.actor.{ Actor, ActorSystem, Props }
-import scala.io.StdIn
+import akka.actor.{Actor, ActorSystem, Props}
 
 object PrintMyActorRefActor {
   def props: Props =
@@ -13,6 +12,7 @@ class PrintMyActorRefActor extends Actor {
     case "printit" =>
       val secondRef = context.actorOf(Props.empty, "second-actor")
       println(s"Second: $secondRef")
+    case s:String if (s == "msg") => println("Message = ["+s+"]")
   }
 }
 
@@ -20,10 +20,17 @@ object ActorHierarchyExperiments extends App {
   val system = ActorSystem("testSystem")
 
   val firstRef = system.actorOf(PrintMyActorRefActor.props, "first-actor")
-  println(s"First: $firstRef")
+  println("First: "+ firstRef)
   firstRef ! "printit"
+  firstRef ! "msg"
 
-  println(">>> Press ENTER to exit <<<")
-  try StdIn.readLine()
-  finally system.terminate()
+  Thread.sleep(1000)
+  println("-----------------")
+
+  val secRef = system.actorOf(PrintMyActorRefActor.props, "second-actor")
+  println(s"Second: "+ secRef)
+  secRef ! "msg"
+
+  Thread.sleep(1000)
+  system.terminate()
 }
