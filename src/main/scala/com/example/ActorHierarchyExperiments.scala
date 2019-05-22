@@ -2,6 +2,8 @@ package com.example
 
 import akka.actor.{Actor, ActorSystem, Props}
 
+//*************************************************************************************************
+
 object PrintMyActorRefActor {
   def props: Props =
     Props(new PrintMyActorRefActor)
@@ -15,6 +17,8 @@ class PrintMyActorRefActor extends Actor {
     case s:String if (s == "msg") => println("Message = ["+s+"]")
   }
 }
+
+//*************************************************************************************************
 
 object ActorHierarchyExperiments extends App {
   val system = ActorSystem("testSystem")
