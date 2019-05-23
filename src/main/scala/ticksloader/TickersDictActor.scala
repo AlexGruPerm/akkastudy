@@ -39,15 +39,8 @@ class TickersDictActor extends Actor {
       sess match {
         case Success(s) => {
           log.info("Cassandra successful connection")
-          log.info("Parent name = "+context.parent.path)
-          //val master = context.actorSelection("/user/TicksLoaderManagerActor")
-          //master ! "db_connected_successful"
           context.parent ! "db_connected_successful"
-          /**
-            * Here we can query tickers dictionary and send results to parent Actor.
-          */
-          val distTickers :Seq[Ticker] = readTickersFromDb(s)
-          context.parent ! distTickers
+          context.parent ! readTickersFromDb(s)
           s.close()
         }
         case Failure(f) =>  {

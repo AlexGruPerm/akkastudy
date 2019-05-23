@@ -25,7 +25,7 @@ class TicksLoaderManagerActor extends Actor {
     case "db_connection_failed"    => log.info("Child "+sender.path.name+" respond that can't connect to DB.")
 
     case seqTickers :Seq[Ticker] => {
-      log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name)
+      log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name+" first is "+seqTickers(0).tickerCode)
     }
 
     case _ => log.info(getClass.getName +" unknown message.")
