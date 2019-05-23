@@ -3,9 +3,11 @@ package ticksloader
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.cql.Row
 import com.typesafe.config.{Config, ConfigFactory}
 
-import scala.util.{Try, Success, Failure}
+import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
 
 class TickersDictActor extends Actor {
 
@@ -15,6 +17,20 @@ class TickersDictActor extends Actor {
   val nodeAddress :String =  config.getString("loader.connection.address")
   log.info("TickersDictActor init nodeAddress = "+nodeAddress)
 
+  val rowToTicker = (row: Row) => {
+    Ticker(
+      row.getInt("ticker_id"),
+      row.getString("ticker_code")
+     )
+  }
+
+  def readTickersFromDb(sess :CqlSession) :Seq[Ticker] = {
+    import com.datastax.oss.driver.api.core.cql.SimpleStatement
+    val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
+    sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+  }
+
+
   override def receive: Receive = {
     case "get" => {
       log.info(" TickersDictActor - get tickers from dictionary .")
@@ -22,18 +38,23 @@ class TickersDictActor extends Actor {
       val sess :Try[CqlSession] = (new CassandraConnector(nodeAddress)).getSession
       sess match {
         case Success(s) => {
-          log.error("Cassandra successful connection")
+          log.info("Cassandra successful connection")
+          log.info("Parent name = "+context.parent.path)
+          //val master = context.actorSelection("/user/TicksLoaderManagerActor")
+          //master ! "db_connected_successful"
           context.parent ! "db_connected_successful"
+          /**
+            * Here we can query tickers dictionary and send results to parent Actor.
+          */
+          val distTickers :Seq[Ticker] = readTickersFromDb(s)
+          context.parent ! distTickers
           s.close()
-          //Send message to parent that connected successful, and query DB.
         }
         case Failure(f) =>  {
-          log.error("Cassandra get connection from ["+getClass.getName+"] error message = "+f.getMessage)
+          log.error("Cassandra get connection from ["+getClass.getName+"] error message = "+f.getMessage+" - "+f.getCause)
           context.parent ! "db_connection_failed"
-          //Send message to parent, about fail connection.
         }
       }
-      1
     }
     case _ => log.info(getClass.getName +" unknown message.")
   }
