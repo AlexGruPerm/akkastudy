@@ -6,6 +6,6 @@ object TicksLoaderMain extends App {
   val system = ActorSystem("LoadTickersSystem")
   val ticksLoader = system.actorOf(TicksLoaderManagerActor.props, "TicksLoaderManagerActor")
   ticksLoader ! "begin load"
-  ///not stoping so fast
+  ///not stoping so fast !!!!!!
   //ticksLoader ! "stop"
 }

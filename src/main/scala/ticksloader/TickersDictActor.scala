@@ -49,6 +49,7 @@ class TickersDictActor extends Actor {
         }
       }
     }
+    case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")
   }
 
