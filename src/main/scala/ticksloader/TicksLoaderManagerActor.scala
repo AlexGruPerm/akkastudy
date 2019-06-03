@@ -68,11 +68,11 @@ class TicksLoaderManagerActor extends Actor {
   val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
   val sqlMaxTs :String = "select max(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
 
-  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate)
-  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate)
+  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate).bind()
+  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate).bind()
 
-  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs)
-  val prepMaxTsTo = sessTo.prepare(sqlMaxTs)
+  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs).bind()
+  val prepMaxTsTo = sessTo.prepare(sqlMaxTs).bind()
 
 
   override def receive: Receive = {

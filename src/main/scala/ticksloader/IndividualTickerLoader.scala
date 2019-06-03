@@ -5,7 +5,7 @@ import java.time.LocalDate
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.PreparedStatement
+import com.datastax.oss.driver.api.core.cql.BoundStatement
 
 //    import com.datastax.oss.driver.api.core.cql.SimpleStatement
 
@@ -16,21 +16,21 @@ class IndividualTickerLoader extends Actor {
   def getCurrentState(tickerID :Int,
                       cassFrom :CqlSession,
                       cassTo :CqlSession,
-                      prepMaxDdateFrom :PreparedStatement,
-                      prepMaxDdateTo :PreparedStatement,
-                      prepMaxTsFrom :PreparedStatement,
-                      prepMaxTsTo :PreparedStatement
+                      prepMaxDdateFrom :BoundStatement,
+                      prepMaxDdateTo :BoundStatement,
+                      prepMaxTsFrom :BoundStatement,
+                      prepMaxTsTo :BoundStatement
                      ) :IndTickerLoaderState = {
     import java.time.Duration
     import java.time.temporal.ChronoUnit
 
     val duration :java.time.Duration = Duration.of(10, ChronoUnit.SECONDS)
 
-    val maxDdateTo :LocalDate = cassTo.execute(prepMaxDdateTo.bind().setInt("tickerID",tickerID)).one().getLocalDate("ddate")
-    val maxTsTo :Long = cassTo.execute(prepMaxTsTo.bind().setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
+    val maxDdateTo :LocalDate = cassTo.execute(prepMaxDdateTo.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
+    val maxTsTo :Long = cassTo.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
 
-    val maxDdateFrom :LocalDate = cassFrom.execute(prepMaxDdateFrom.bind().setInt("tickerID",tickerID)).one().getLocalDate("ddate")
-    val maxTsFrom :Long = cassFrom.execute(prepMaxTsFrom.bind().setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateFrom)).one().getLong("ts")
+    val maxDdateFrom :LocalDate = cassFrom.execute(prepMaxDdateFrom.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
+    val maxTsFrom :Long = cassFrom.execute(prepMaxTsFrom.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateFrom)).one().getLong("ts")
 
     /*
     val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
@@ -68,10 +68,10 @@ class IndividualTickerLoader extends Actor {
       tickerID :Int,
       cassFrom :CqlSession,
       cassTo :CqlSession,
-      prepMaxDdateFrom :PreparedStatement,
-    prepMaxDdateTo :PreparedStatement,
-    prepMaxTsFrom :PreparedStatement,
-    prepMaxTsTo :PreparedStatement
+      prepMaxDdateFrom :BoundStatement,
+    prepMaxDdateTo :BoundStatement,
+    prepMaxTsFrom :BoundStatement,
+    prepMaxTsTo :BoundStatement
 
       ) => {
      log.info("Actor "+self.path.name+" running")
