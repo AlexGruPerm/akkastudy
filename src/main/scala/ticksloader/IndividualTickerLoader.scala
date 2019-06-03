@@ -5,6 +5,7 @@ import java.time.LocalDate
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.cql.PreparedStatement
 
 //    import com.datastax.oss.driver.api.core.cql.SimpleStatement
 
@@ -12,74 +13,73 @@ class IndividualTickerLoader extends Actor {
   val log = Logging(context.system, this)
 
 
-  def getCurrentState(tickerID :Int, cassFrom :CqlSession, cassTo :CqlSession) :IndTickerLoaderState = {
-
-    /*
-     select ddate from mts_src.ticks_count_days where ticker_id = 1 limit 1;
-     --2019-05-13
-     select max(db_tsunx) from mts_src.ticks where ticker_id=1 and ddate='2019-05-13' allow filtering;
-     --1557725014703
-    */
-
-/*
-    val psFrom = cassFrom.prepare("select ddate from mts_src.ticks_count_days where ticker_id = :tickerId limit 1")
-    val maxTsFrom = cassFrom.execute(psFrom.bind().setInt("tickerId", tickerID)).one().getLocalDate("ddate")
-*/
-    /*
-    if (cassFrom.isClosed) log.error("cassFrom IS CLOSED.")
-    else log.info("cassFrom IS OPENED.")
-    */
-
-    //val maxTsFrom = cassFrom.execute("select ddate from mts_src.ticks_count_days where ticker_id = 1 limit 1").one().getLocalDate("ddate")
-
-    import com.datastax.oss.driver.api.core.cql.SimpleStatement
-
+  def getCurrentState(tickerID :Int,
+                      cassFrom :CqlSession,
+                      cassTo :CqlSession,
+                      prepMaxDdateFrom :PreparedStatement,
+                      prepMaxDdateTo :PreparedStatement,
+                      prepMaxTsFrom :PreparedStatement,
+                      prepMaxTsTo :PreparedStatement
+                     ) :IndTickerLoaderState = {
     import java.time.Duration
     import java.time.temporal.ChronoUnit
 
-    val duration :java.time.Duration = Duration.of(5, ChronoUnit.SECONDS)
+    val duration :java.time.Duration = Duration.of(10, ChronoUnit.SECONDS)
+
+    val maxDdateTo :LocalDate = cassTo.execute(prepMaxDdateTo.bind().setInt("tickerID",tickerID)).one().getLocalDate("ddate")
+    val maxTsTo :Long = cassTo.execute(prepMaxTsTo.bind().setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
+
+    val maxDdateFrom :LocalDate = cassFrom.execute(prepMaxDdateFrom.bind().setInt("tickerID",tickerID)).one().getLocalDate("ddate")
+    val maxTsFrom :Long = cassFrom.execute(prepMaxTsFrom.bind().setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateFrom)).one().getLong("ts")
+
     /*
-    val stmtMaxDate = SimpleStatement.newInstance("select ddate from mts_src.ticks_count_days where ticker_id = 1 limit 1").setTimeout(duration)
-    val maxTsFrom = cassFrom.execute(stmtMaxDate).one().getLocalDate("ddate")
-    val maxTsTo = cassTo.execute(stmtMaxDate).one().getLocalDate("ddate")
-    log.info(" maxTsFrom = "+maxTsFrom+" maxTsTo="+maxTsTo)
-    */
     val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
     val sqlMaxTs :String = "select max(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
 
     val maxDdateFrom :LocalDate = cassFrom.execute(
-      SimpleStatement.builder(sqlMaxDdate).setTimeout(duration)
+      SimpleStatement.builder(sqlMaxDdate).setTimeout(duration).setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
         .addNamedValue("tickerID", tickerID)
         .build()).one().getLocalDate("ddate")
-
-    val maxDdateTo :LocalDate = cassTo.execute(
-      SimpleStatement.builder(sqlMaxDdate).setTimeout(duration)
-        .addNamedValue("tickerID", tickerID)
-        .build()).one().getLocalDate("ddate")
-
-    log.info(" maxDdateFrom = " + maxDdateFrom + " maxDdateTo = " + maxDdateTo)
 
     val maxTsFrom :Long = cassFrom.execute(
-      SimpleStatement.builder(sqlMaxTs).setTimeout(duration)
+      SimpleStatement.builder(sqlMaxTs).setTimeout(duration).setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
         .addNamedValue("tickerID", tickerID)
         .addNamedValue("maxDdate", maxDdateFrom)
         .build()).one().getLong("ts")
 
+
+    val maxDdateTo :LocalDate = cassTo.execute(
+      SimpleStatement.builder(sqlMaxDdate).setTimeout(duration).setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+        .addNamedValue("tickerID", tickerID)
+        .build()).one().getLocalDate("ddate")
+
     val maxTsTo :Long = cassTo.execute(
-      SimpleStatement.builder(sqlMaxTs).setTimeout(duration)
+      SimpleStatement.builder(sqlMaxTs).setTimeout(duration).setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
         .addNamedValue("tickerID", tickerID)
         .addNamedValue("maxDdate", maxDdateTo)
         .build()).one().getLong("ts")
-
-    log.info(" maxTsFrom = " + maxTsFrom + " maxTsTo = " + maxTsTo)
+*/
 
     IndTickerLoaderState(tickerID, maxDdateFrom, maxTsFrom, maxDdateTo, maxTsTo)
   }
 
   override def receive: Receive = {
-    case ("run", tickerID :Int, cassFrom :CqlSession, cassTo :CqlSession) => {
-     log.info("Actor "+self.path.name+" running for ticker_id="+tickerID)
-      val initialState :IndTickerLoaderState = getCurrentState(tickerID, cassFrom, cassTo)
+    case ("run",
+      tickerID :Int,
+      cassFrom :CqlSession,
+      cassTo :CqlSession,
+      prepMaxDdateFrom :PreparedStatement,
+    prepMaxDdateTo :PreparedStatement,
+    prepMaxTsFrom :PreparedStatement,
+    prepMaxTsTo :PreparedStatement
+
+      ) => {
+     log.info("Actor "+self.path.name+" running")
+      val initialState :IndTickerLoaderState = getCurrentState(tickerID, cassFrom, cassTo,
+        prepMaxDdateFrom,
+        prepMaxDdateTo,
+        prepMaxTsFrom,
+        prepMaxTsTo)
       log.info("initialState="+initialState)
     }
     case "stop" => {

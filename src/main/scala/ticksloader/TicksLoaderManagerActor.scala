@@ -48,12 +48,38 @@ class TicksLoaderManagerActor extends Actor {
     (sf,st)
   }
 
+  val config :Config = ConfigFactory.load(s"application.conf")
+  val nodeAddressFrom :String =  config.getString("loader.connection.address-from")
+  val nodeAddressTo :String =  config.getString("loader.connection.address-to")
+  //select data_center from system.local
+  val dcFrom :String = config.getString("loader.connection.dc-from")
+  val dcTo :String = config.getString("loader.connection.dc-to")
+
+  val (sessFrom :CqlSession, sessTo :CqlSession) =
+    try {
+      getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
+    } catch {
+      case c: CassConnectException => {
+        c.printStackTrace
+      }
+      case e: Throwable => throw e
+    }
+
+  val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
+  val sqlMaxTs :String = "select max(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
+
+  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate)
+  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate)
+
+  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs)
+  val prepMaxTsTo = sessTo.prepare(sqlMaxTs)
+
 
   override def receive: Receive = {
     case "begin load" => {
       log.info(" TicksLoaderManagerActor BEGIN LOADING TICKS.")
       val tickersDictActor = context.actorOf(TickersDictActor.props, "TickersDictActor")
-      tickersDictActor ! "get"
+      tickersDictActor ! ("get",sessTo)
     }
     case "stop" => {
       log.info("Stop command from Main application. Close all.")
@@ -64,15 +90,12 @@ class TicksLoaderManagerActor extends Actor {
     case "db_connection_failed"    => log.info("Child "+sender.path.name+" respond that can't connect to DB.")
     case seqTickers :Seq[Ticker] => {
       log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name+" first is "+seqTickers(0).tickerCode)
-      sender ! "stop" //close child Actor "TickersDictActor"
-      //Creation Actors for each ticker and run it all.
-      val config :Config = ConfigFactory.load(s"application.conf")
-      val nodeAddressFrom :String =  config.getString("loader.connection.address-from")
-      val nodeAddressTo :String =  config.getString("loader.connection.address-to")
-      //select data_center from system.local
-      val dcFrom :String = config.getString("loader.connection.dc-from")
-      val dcTo :String = config.getString("loader.connection.dc-to")
+    //  sender ! "stop" //close child Actor "TickersDictActor"
 
+
+      //Creation Actors for each ticker and run it all.
+
+      /*
       val (sessFrom :CqlSession, sessTo :CqlSession) =
       try {
          getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
@@ -82,22 +105,31 @@ class TicksLoaderManagerActor extends Actor {
         }
         case e: Throwable => throw e
       }
+      */
 
-
-      seqTickers/*.filter(elm => elm.tickerId==1)*/.foreach{
+      seqTickers.foreach{
         ticker =>
           log.info("Creation new Actor for ["+ticker.tickerCode+"]")
          val thisTickerActor = context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
-            thisTickerActor ! ("run", ticker.tickerId, sessFrom, sessTo)
-
-          Thread.sleep(2000)
-          /** ~~~~~~~~~~~~~~~~~~~~~~~~ */
-          /*
-          Thread.sleep(3000)
-          thisTickerActor ! "stop"
-          */
+             thisTickerActor ! ("run", ticker.tickerId, sessFrom, sessTo ,
+               prepMaxDdateFrom,
+               prepMaxDdateTo,
+               prepMaxTsFrom,
+               prepMaxTsTo)
+          // Thread.sleep(2000)
           /** ~~~~~~~~~~~~~~~~~~~~~~~~ */
       }
+
+      /*
+      Thread.sleep(5000)
+      seqTickers.foreach{
+        ticker =>
+          log.info("run Actor IndividualTickerLoader"+ticker.tickerId+" for ["+ticker.tickerCode+"]")
+          context.actorSelection("/user/TicksLoaderManagerActor/IndividualTickerLoader"+ticker.tickerId) ! ("run", ticker.tickerId, sessFrom, sessTo)
+        /** ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+      }
+      */
+
 
       sessFrom.close()
       sessTo.close()
