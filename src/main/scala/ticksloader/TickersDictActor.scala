@@ -14,8 +14,10 @@ class TickersDictActor extends Actor {
   val log = Logging(context.system, this)
   val config :Config = ConfigFactory.load(s"application.conf")
 
-  val nodeAddress :String =  config.getString("loader.connection.address")
-  log.info("TickersDictActor init nodeAddress = "+nodeAddress)
+  val nodeAddress :String =  config.getString("loader.connection.address-to")
+  val dcTo :String = config.getString("loader.connection.dc-to")
+
+  log.info("TickersDictActor init nodeAddress = "+nodeAddress+" with dc="+dcTo)
 
   val rowToTicker = (row: Row) => {
     Ticker(
@@ -35,7 +37,7 @@ class TickersDictActor extends Actor {
     case "get" => {
       log.info(" TickersDictActor - get tickers from dictionary .")
       log.info("...here we try connect to DB and get tickers list.")
-      val sess :Try[CqlSession] = (new CassandraConnector(nodeAddress)).getSession
+      val sess :Try[CqlSession] = (new CassandraConnector(nodeAddress,dcTo)).getSession
       sess match {
         case Success(s) => {
           log.info("Cassandra successful connection")

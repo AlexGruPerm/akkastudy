@@ -17,9 +17,9 @@ class TicksLoaderManagerActor extends Actor {
   /**
     * return pair of connections or erase CassConnectException
   */
-  def getPairOfConnection(cassFrom :String, cassTo :String) :(CqlSession,CqlSession) ={
-    val sessFrom :Try[CqlSession] = new CassandraConnector(cassFrom).getSession
-    val sessTo :Try[CqlSession] = new CassandraConnector(cassTo).getSession
+  def getPairOfConnection(cassFrom :String, dcFrom :String, cassTo :String, dcTo :String) :(CqlSession,CqlSession) ={
+    val sessFrom :Try[CqlSession] = new CassandraConnector(cassFrom,dcFrom).getSession
+    val sessTo :Try[CqlSession] = new CassandraConnector(cassTo,dcTo).getSession
 
     val (sf: CqlSession, st:CqlSession) =
     (sessFrom,sessTo) match {
@@ -69,10 +69,13 @@ class TicksLoaderManagerActor extends Actor {
       val config :Config = ConfigFactory.load(s"application.conf")
       val nodeAddressFrom :String =  config.getString("loader.connection.address-from")
       val nodeAddressTo :String =  config.getString("loader.connection.address-to")
+      //select data_center from system.local
+      val dcFrom :String = config.getString("loader.connection.dc-from")
+      val dcTo :String = config.getString("loader.connection.dc-to")
 
       val (sessFrom :CqlSession, sessTo :CqlSession) =
       try {
-         getPairOfConnection(nodeAddressFrom, nodeAddressTo)
+         getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
       } catch {
         case c: CassConnectException => {
           c.printStackTrace
@@ -80,12 +83,14 @@ class TicksLoaderManagerActor extends Actor {
         case e: Throwable => throw e
       }
 
-      val t1 = System.currentTimeMillis
-      seqTickers.filter(elm => elm.tickerId==1).foreach{
+
+      seqTickers/*.filter(elm => elm.tickerId==1)*/.foreach{
         ticker =>
           log.info("Creation new Actor for ["+ticker.tickerCode+"]")
          val thisTickerActor = context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
             thisTickerActor ! ("run", ticker.tickerId, sessFrom, sessTo)
+
+          Thread.sleep(2000)
           /** ~~~~~~~~~~~~~~~~~~~~~~~~ */
           /*
           Thread.sleep(3000)
@@ -93,8 +98,7 @@ class TicksLoaderManagerActor extends Actor {
           */
           /** ~~~~~~~~~~~~~~~~~~~~~~~~ */
       }
-      val t2 = System.currentTimeMillis
-      log.info("Duration (create,run) is "+(t2 - t1))
+
       sessFrom.close()
       sessTo.close()
     }
