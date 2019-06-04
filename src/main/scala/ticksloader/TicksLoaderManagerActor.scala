@@ -63,7 +63,7 @@ class TicksLoaderManagerActor extends Actor {
   /**
     * If the gap is more then readByHours than read by this interval or all ticks.
   */
-  val readByHours :Int = config.getInt("loader.load-property.read-by-hours")
+  val readByMinutes :Int = config.getInt("loader.load-property.read-by-minutes")
 
   val (sessFrom :CqlSession, sessTo :CqlSession) =
     try {
@@ -88,13 +88,13 @@ class TicksLoaderManagerActor extends Actor {
 
   val sqlReatTicks :String =
                """
-               select
-                     ticker_id,
-      	             ddate,
-      	             ts,
-      	             db_tsunx,
-      	             ask,
-      	             bid
+                select
+                       ticker_id,
+      	               ddate,
+      	               ts,
+      	               db_tsunx,
+      	               ask,
+      	               bid
                   from mts_src.ticks
                  where ticker_id = :tickerID and
                        ddate     = :beginDdate and
@@ -102,6 +102,30 @@ class TicksLoaderManagerActor extends Actor {
                        db_tsunx <= :toTs
                  allow filtering
                 """
+
+  /**~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+  val sqlSaveTickDb = """ insert into mts_src.ticks(ticker_id,ddate,ts,db_tsunx,ask,bid)
+                                             values(:tickerID, :ddate, :ts,:db_tsunx,:ask,:bid) """
+
+  val sqlSaveTicksByDay =
+    """ update mts_src.ticks_count_days
+           set ticks_count = ticks_count + :pTicksCount
+         where ticker_id = :tickerID and
+               ddate     = :ddate """
+
+  val sqlSaveTicksCntTotal =
+    """  update mts_src.ticks_count_total
+            set ticks_count = ticks_count + :pTicksCount
+          where ticker_id   = :tickerID """
+
+  val prepSaveTickDb = sessTo.prepare(sqlSaveTickDb).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+
+  val prepSaveTicksByDay = sessTo.prepare(sqlSaveTicksByDay).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+
+  val prepSaveTicksCntTotal = sessTo.prepare(sqlSaveTicksCntTotal).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+
+  /**~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
   val prepReadTicks = sessFrom.prepare(sqlReatTicks).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
 
@@ -141,8 +165,12 @@ class TicksLoaderManagerActor extends Actor {
               prepMaxDdateTo,
               prepMaxTsFrom,
               prepMaxTsTo,
-              readByHours,
-              prepReadTicks)
+              readByMinutes,
+              prepReadTicks,
+              prepSaveTickDb ,
+              prepSaveTicksByDay,
+              prepSaveTicksCntTotal
+            )
           Thread.sleep(300)
       }
 

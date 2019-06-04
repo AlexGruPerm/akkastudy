@@ -29,7 +29,7 @@ class TickersDictActor extends Actor {
     case
     ("get", sess :CqlSession)=> {
       log.info(" TickersDictActor - get tickers from dictionary .")
-      context.parent ! readTickersFromDb(sess)//.filter(t => Seq(1,2,3).contains(t.tickerId))
+      context.parent ! readTickersFromDb(sess).filter(t => Seq(1).contains(t.tickerId))
     }
     case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")
