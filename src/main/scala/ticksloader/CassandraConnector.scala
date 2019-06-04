@@ -12,8 +12,6 @@ class CassandraConnector(nodeAddress :String,dcName :String) {
 
   private val TrySession: Try[CqlSession] = {
     try {
-
-      //val sess = CqlSession.builder().addContactPoint(new InetSocketAddress(nodeAddress, 9042)).withLocalDatacenter(dcName).build()
       val sess = CqlSession.builder().addContactPoint(new InetSocketAddress(nodeAddress, 9042)).withLocalDatacenter(dcName).build()
       Success(sess)
     } catch {

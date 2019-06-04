@@ -7,7 +7,7 @@ import com.datastax.oss.driver.api.core.cql.Row
 
 import scala.collection.JavaConverters._
 
-class TickersDictActor extends Actor {
+class TickersDictActor(sess :CqlSession) extends Actor {
 
   val log = Logging(context.system, this)
   log.info("TickersDictActor init")
@@ -19,7 +19,7 @@ class TickersDictActor extends Actor {
      )
   }
 
-  def readTickersFromDb(sess :CqlSession) :Seq[Ticker] = {
+  def readTickersFromDb/*(sess :CqlSession)*/ :Seq[Ticker] = {
     import com.datastax.oss.driver.api.core.cql.SimpleStatement
     val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
     sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
@@ -27,9 +27,9 @@ class TickersDictActor extends Actor {
 
   override def receive: Receive = {
     case
-    ("get", sess :CqlSession)=> {
+    "get" /*("get", sess :CqlSession)*/ => {
       log.info(" TickersDictActor - get tickers from dictionary .")
-      context.parent ! readTickersFromDb(sess).filter(t => Seq(1).contains(t.tickerId))
+      context.parent ! readTickersFromDb/*(sess)*/.filter(t => Seq(1).contains(t.tickerId))
     }
     case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")
@@ -42,7 +42,7 @@ class TickersDictActor extends Actor {
 }
 
 object TickersDictActor {
-  def props: Props = Props(new TickersDictActor)
+  def props(sess :CqlSession): Props = Props(new TickersDictActor(sess))
 }
 
 

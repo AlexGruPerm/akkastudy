@@ -143,8 +143,8 @@ class TicksLoaderManagerActor extends Actor {
     */
     case "begin load" => {
       log.info(" TicksLoaderManagerActor BEGIN LOADING TICKS.")
-      val tickersDictActor = context.actorOf(TickersDictActor.props, "TickersDictActor")
-      tickersDictActor ! ("get",sessTo)
+      val tickersDictActor = context.actorOf(TickersDictActor.props(sessTo), "TickersDictActor")
+      tickersDictActor ! "get"   // ("get",sessTo)
     }
     case seqTickers :Seq[Ticker] => {
       log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name+" first is "+seqTickers(0).tickerCode)
@@ -152,7 +152,7 @@ class TicksLoaderManagerActor extends Actor {
       //Creation Actors for each ticker and run it all.
       seqTickers.foreach{ticker =>
           log.info("Creation Actor for ["+ticker.tickerCode+"]")
-          context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
+          context.actorOf(IndividualTickerLoader.props(sessFrom,sessTo), "IndividualTickerLoader"+ticker.tickerId)
       }
       Thread.sleep(1000)
 
@@ -160,7 +160,7 @@ class TicksLoaderManagerActor extends Actor {
         ticker =>
           log.info("run Actor IndividualTickerLoader"+ticker.tickerId+" for ["+ticker.tickerCode+"]")
           context.actorSelection("/user/TicksLoaderManagerActor/IndividualTickerLoader"+ticker.tickerId) !
-            ("run", ticker.tickerId, ticker.tickerCode, sessFrom, sessTo ,
+            ("run", ticker.tickerId, ticker.tickerCode, //sessFrom, sessTo ,
               prepMaxDdateFrom,
               prepMaxDdateTo,
               prepMaxTsFrom,

@@ -12,7 +12,7 @@ import scala.collection.JavaConverters._
 //import scala.collection.JavaConverters._
 //    import com.datastax.oss.driver.api.core.cql.SimpleStatement
 
-class IndividualTickerLoader extends Actor {
+class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Actor {
   val log = Logging(context.system, this)
 
 
@@ -27,8 +27,8 @@ class IndividualTickerLoader extends Actor {
 
   def getCurrentState(tickerID :Int,
                       tickerCode :String,
-                      cassFrom :CqlSession,
-                      cassTo :CqlSession,
+                      //cassFrom :CqlSession,
+                      //cassTo :CqlSession,
                       prepMaxDdateFrom :BoundStatement,
                       prepMaxDdateTo :BoundStatement,
                       prepMaxTsFrom :BoundStatement,
@@ -64,7 +64,8 @@ class IndividualTickerLoader extends Actor {
     )
   }
 
-  def readTicksFrom(cassFrom :CqlSession, currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
+  def readTicksFrom(//cassFrom :CqlSession,
+                    currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
    if ((currState.maxTsFrom-currState.maxTsTo)/1000L > readByMinutes*60 ){
      cassFrom.execute(prepReadTicks
        .setInt("tickerID",currState.tickerID)
@@ -77,7 +78,7 @@ class IndividualTickerLoader extends Actor {
    }
   }
 
-  def saveTicks(cassTo :CqlSession,
+  def saveTicks(//cassTo :CqlSession,
                 seqReadedTicks :Seq[Tick],
                 currState :IndTickerLoaderState,
                 prepSaveTickDb        :BoundStatement,
@@ -113,8 +114,8 @@ class IndividualTickerLoader extends Actor {
     case ("run",
       tickerID :Int,
       tickerCode :String,
-      cassFrom :CqlSession,
-      cassTo :CqlSession,
+      //cassFrom :CqlSession,
+      //cassTo :CqlSession,
       prepMaxDdateFrom :BoundStatement,
       prepMaxDdateTo :BoundStatement,
       prepMaxTsFrom :BoundStatement,
@@ -126,15 +127,17 @@ class IndividualTickerLoader extends Actor {
       prepSaveTicksCntTotal :BoundStatement
       ) => {
      log.info("Actor ("+self.path.name+") running")
-      val currState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode, cassFrom, cassTo,
+      val currState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode, //cassFrom, cassTo,
         prepMaxDdateFrom,
         prepMaxDdateTo,
         prepMaxTsFrom,
         prepMaxTsTo)
       log.info("currState="+currState)
-      val seqReadedTicks :Seq[Tick] = readTicksFrom(cassFrom,currState,prepReadTicks,readByMinutes)
+      val seqReadedTicks :Seq[Tick] = readTicksFrom(//cassFrom,
+        currState,prepReadTicks,readByMinutes)
       log.info(" FOR ["+currState.tickerCode+"] TICK CNT="+seqReadedTicks.size)
-      saveTicks(cassTo,seqReadedTicks,currState,prepSaveTickDb,prepSaveTicksByDay,prepSaveTicksCntTotal)
+      saveTicks(//cassTo,
+        seqReadedTicks,currState,prepSaveTickDb,prepSaveTicksByDay,prepSaveTicksCntTotal)
     }
     case "stop" => {
       log.info("Stopping "+self.path.name)
@@ -146,7 +149,7 @@ class IndividualTickerLoader extends Actor {
 }
 
 object IndividualTickerLoader {
-  def props: Props = Props(new IndividualTickerLoader)
+  def props(cassFrom :CqlSession, cassTo :CqlSession): Props = Props(new IndividualTickerLoader(cassFrom,cassTo))
 }
 
 
