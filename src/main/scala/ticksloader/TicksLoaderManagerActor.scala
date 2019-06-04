@@ -25,6 +25,10 @@ class TicksLoaderManagerActor extends Actor {
     (sessFrom,sessTo) match {
       case (Success(sfrom),Success(sto)) => {
         log.info("Both session opened in "+getClass.getName+" in getPairOfConnection")
+
+        log.info("sessionFrom name="+sfrom.getContext.getSessionName+" protocol="+sfrom.getContext.getProtocolVersion)
+        log.info("sessionTo name="+sto.getContext.getSessionName+" protocol="+sto.getContext.getProtocolVersion)
+
         (sfrom,sto)
       }
       /**
@@ -56,6 +60,11 @@ class TicksLoaderManagerActor extends Actor {
   val dcFrom :String = config.getString("loader.connection.dc-from")
   val dcTo :String = config.getString("loader.connection.dc-to")
 
+  /**
+    * If the gap is more then readByHours than read by this interval or all ticks.
+  */
+  val readByHours :Int = config.getInt("loader.load-property.read-by-hours")
+
   val (sessFrom :CqlSession, sessTo :CqlSession) =
     try {
       getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
@@ -72,14 +81,35 @@ class TicksLoaderManagerActor extends Actor {
         throw e
     }
 
-  val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
-  val sqlMaxTs :String = "select max(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
+  Thread.sleep(3000)
 
-  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
-  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+  val sqlMaxDdate :String = "select max(ddate) as ddate from mts_src.ticks_count_days where ticker_id = :tickerID"
+  val sqlMaxTs :String = "select max(db_tsunx) as ts    from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
 
-  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
-  val prepMaxTsTo = sessTo.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+  val sqlReatTicks :String =
+               """
+               select
+                     ticker_id,
+      	             ddate,
+      	             ts,
+      	             db_tsunx,
+      	             ask,
+      	             bid
+                  from mts_src.ticks
+                 where ticker_id = :tickerID and
+                       ddate     = :beginDdate and
+                       db_tsunx >= :fromTs and
+                       db_tsunx <= :toTs
+                 allow filtering
+                """
+
+  val prepReadTicks = sessFrom.prepare(sqlReatTicks).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
+
+  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
+  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
+
+  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
+  val prepMaxTsTo = sessTo.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE).setIdempotent(true)
 
   override def receive: Receive = {
     /*
@@ -97,7 +127,7 @@ class TicksLoaderManagerActor extends Actor {
 
       //Creation Actors for each ticker and run it all.
       seqTickers.foreach{ticker =>
-          log.info("Creation new Actor for ["+ticker.tickerCode+"]")
+          log.info("Creation Actor for ["+ticker.tickerCode+"]")
           context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
       }
       Thread.sleep(1000)
@@ -110,7 +140,10 @@ class TicksLoaderManagerActor extends Actor {
               prepMaxDdateFrom,
               prepMaxDdateTo,
               prepMaxTsFrom,
-              prepMaxTsTo)
+              prepMaxTsTo,
+              readByHours,
+              prepReadTicks)
+          Thread.sleep(300)
       }
 
       Thread.sleep(5000)

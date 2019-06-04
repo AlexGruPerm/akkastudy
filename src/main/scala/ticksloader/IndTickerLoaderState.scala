@@ -7,7 +7,15 @@ case class IndTickerLoaderState(tickerID     :Int,
                                 maxDdateFrom :LocalDate,
                                 maxTsFrom    :Long,
                                 maxDdateTo   :LocalDate,
-                                maxTsTo      :Long)
+                                maxTsTo      :Long){
+  val gapSeconds :Long = (maxTsFrom-maxTsTo)/1000L
+  val gapDays :Long = gapSeconds/60/60/24
+
+  override def toString: String = {
+    " "+tickerID+" ["+tickerCode+"] "+"("+maxDdateFrom+"-"+maxDdateTo+") ("+maxTsFrom+"-"+maxTsTo+") DAYS:"+gapDays+" SECS:"+gapSeconds
+  }
+
+}
 
 
 

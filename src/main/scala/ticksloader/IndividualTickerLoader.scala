@@ -6,7 +6,10 @@ import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.BoundStatement
+import com.datastax.oss.driver.api.core.cql.Row
+import scala.collection.JavaConverters._
 
+//import scala.collection.JavaConverters._
 //    import com.datastax.oss.driver.api.core.cql.SimpleStatement
 
 class IndividualTickerLoader extends Actor {
@@ -31,13 +34,15 @@ class IndividualTickerLoader extends Actor {
                       prepMaxTsFrom :BoundStatement,
                       prepMaxTsTo :BoundStatement
                      ) :IndTickerLoaderState = {
+    /*
     import java.time.Duration
     import java.time.temporal.ChronoUnit
-
+    val duration :java.time.Duration = Duration.of(15, ChronoUnit.SECONDS)
+    */
+    /*
     checkISClose(cassFrom,"cassFrom")
     checkISClose(cassTo,"cassTo")
-
-    val duration :java.time.Duration = Duration.of(15, ChronoUnit.SECONDS)
+    */
 
     val maxDdateTo :LocalDate = cassTo.execute(prepMaxDdateTo.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
     val maxTsTo :Long = cassTo.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
@@ -48,6 +53,34 @@ class IndividualTickerLoader extends Actor {
     IndTickerLoaderState(tickerID, tickerCode, maxDdateFrom, maxTsFrom, maxDdateTo, maxTsTo)
   }
 
+  val rowToTick = (row: Row) => {
+    Tick(
+      row.getInt("ticker_id"),
+      row.getLocalDate("ddate"),
+      row.getLong("ts"),
+      row.getLong("db_tsunx"),
+      row.getDouble("ask"),
+      row.getDouble("bid")
+    )
+  }
+
+  def readTicksFrom(cassFrom :CqlSession, currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByHours :Int) :Seq[Tick] = {
+   if ((currState.maxTsFrom-currState.maxTsTo)/1000L > readByHours*60*60 ){
+
+     cassFrom.getContext
+
+     cassFrom.execute(prepReadTicks
+       .setInt("tickerID",currState.tickerID)
+       .setLocalDate("beginDdate",currState.maxDdateTo)
+       .setLong("fromTs",currState.maxTsTo)
+       .setLong("toTs",currState.maxTsTo+readByHours*60*60*1000L)).all().iterator.asScala.toSeq.map(rowToTick).sortBy(e => (e.ticker_id,e.db_tsunx)).toList
+   } else {
+     Nil
+   }
+  }
+
+
+
   override def receive: Receive = {
     case ("run",
       tickerID :Int,
@@ -57,15 +90,19 @@ class IndividualTickerLoader extends Actor {
       prepMaxDdateFrom :BoundStatement,
       prepMaxDdateTo :BoundStatement,
       prepMaxTsFrom :BoundStatement,
-      prepMaxTsTo :BoundStatement
+      prepMaxTsTo :BoundStatement,
+      readByHours :Int,
+      prepReadTicks :BoundStatement
       ) => {
      log.info("Actor ("+self.path.name+") running")
-      val initialState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode, cassFrom, cassTo,
+      val currState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode, cassFrom, cassTo,
         prepMaxDdateFrom,
         prepMaxDdateTo,
         prepMaxTsFrom,
         prepMaxTsTo)
-      log.info("initialState="+initialState)
+      log.info("currState="+currState)
+      val seqReadedTicks :Seq[Tick] = readTicksFrom(cassFrom,currState,prepReadTicks,readByHours)
+      log.info(" FOR ["+currState.tickerCode+"] TICK CNT="+seqReadedTicks.size)
     }
     case "stop" => {
       log.info("Stopping "+self.path.name)
