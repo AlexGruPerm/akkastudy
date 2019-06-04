@@ -17,7 +17,9 @@ class TicksLoaderManagerActor extends Actor {
   /**
     * return pair of connections or erase CassConnectException
   */
+  /*
   def getPairOfConnection(cassFrom :String, dcFrom :String, cassTo :String, dcTo :String) :(CqlSession,CqlSession) ={
+
     val sessFrom :Try[CqlSession] = new CassandraConnector(cassFrom,dcFrom).getSession
     val sessTo :Try[CqlSession] = new CassandraConnector(cassTo,dcTo).getSession
 
@@ -51,14 +53,18 @@ class TicksLoaderManagerActor extends Actor {
     log.info("SUCCESSFUL CONNECTED BOTH SIDES.")
     (sf,st)
   }
+  */
+
 
   val config :Config = ConfigFactory.load(s"application.conf")
+  /*
   val nodeAddressFrom :String =  config.getString("loader.connection.address-from")
   val nodeAddressTo :String =  config.getString("loader.connection.address-to")
 
   //select data_center from system.local
   val dcFrom :String = config.getString("loader.connection.dc-from")
   val dcTo :String = config.getString("loader.connection.dc-to")
+  */
 
   /**
     * If the gap is more then readByHours than read by this interval or all ticks.
@@ -67,7 +73,8 @@ class TicksLoaderManagerActor extends Actor {
 
   val (sessFrom :CqlSession, sessTo :CqlSession) =
     try {
-      getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
+      //getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
+      (CassSessionFrom.getSess,CassSessionTo.getSess)
     } catch {
       case c: CassConnectException => {
         log.error("ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"]")
@@ -160,7 +167,7 @@ class TicksLoaderManagerActor extends Actor {
         ticker =>
           log.info("run Actor IndividualTickerLoader"+ticker.tickerId+" for ["+ticker.tickerCode+"]")
           context.actorSelection("/user/TicksLoaderManagerActor/IndividualTickerLoader"+ticker.tickerId) !
-            ("run", ticker.tickerId, ticker.tickerCode, //sessFrom, sessTo ,
+            ("run", ticker.tickerId, ticker.tickerCode,
               prepMaxDdateFrom,
               prepMaxDdateTo,
               prepMaxTsFrom,
