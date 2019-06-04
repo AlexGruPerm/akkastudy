@@ -2,7 +2,7 @@ package ticksloader
 
 import akka.actor.{Actor, Props}
 import akka.event.Logging
-import com.datastax.oss.driver.api.core.CqlSession
+import com.datastax.oss.driver.api.core.{CqlSession, DefaultConsistencyLevel}
 import com.typesafe.config.{Config, ConfigFactory}
 
 import scala.util.{Failure, Success, Try}
@@ -51,6 +51,7 @@ class TicksLoaderManagerActor extends Actor {
   val config :Config = ConfigFactory.load(s"application.conf")
   val nodeAddressFrom :String =  config.getString("loader.connection.address-from")
   val nodeAddressTo :String =  config.getString("loader.connection.address-to")
+
   //select data_center from system.local
   val dcFrom :String = config.getString("loader.connection.dc-from")
   val dcTo :String = config.getString("loader.connection.dc-to")
@@ -60,77 +61,59 @@ class TicksLoaderManagerActor extends Actor {
       getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
     } catch {
       case c: CassConnectException => {
-        c.printStackTrace
+        log.error("ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"]")
+        throw c
       }
-      case e: Throwable => throw e
+      case de : com.datastax.oss.driver.api.core.DriverTimeoutException =>
+        log.error("ERROR when call getPairOfConnection ["+de.getMessage+"] ["+de.getCause+"] "+de.getExecutionInfo.getErrors)
+        throw de
+      case e: Throwable =>
+        log.error("ERROR when call getPairOfConnection ["+e.getMessage+"]")
+        throw e
     }
 
   val sqlMaxDdate :String = "select ddate from mts_src.ticks_count_days where ticker_id = :tickerID limit 1"
   val sqlMaxTs :String = "select max(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
 
-  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate).bind()
-  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate).bind()
+  val prepMaxDdateFrom = sessFrom.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+  val prepMaxDdateTo = sessTo.prepare(sqlMaxDdate).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
 
-  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs).bind()
-  val prepMaxTsTo = sessTo.prepare(sqlMaxTs).bind()
-
+  val prepMaxTsFrom =sessFrom.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
+  val prepMaxTsTo = sessTo.prepare(sqlMaxTs).bind().setConsistencyLevel(DefaultConsistencyLevel.LOCAL_ONE)
 
   override def receive: Receive = {
+    /*
+    case "stop" => {
+      context.stop(self)
+    }
+    */
     case "begin load" => {
       log.info(" TicksLoaderManagerActor BEGIN LOADING TICKS.")
       val tickersDictActor = context.actorOf(TickersDictActor.props, "TickersDictActor")
       tickersDictActor ! ("get",sessTo)
     }
-    case "stop" => {
-      log.info("Stop command from Main application. Close all.")
-      context.stop(self)
-    }
-    //possible messages from child - tickersDictActor
-    case "db_connected_successful" => log.info("Child "+sender.path.name+" respond that successfully connected to DB.")
-    case "db_connection_failed"    => log.info("Child "+sender.path.name+" respond that can't connect to DB.")
     case seqTickers :Seq[Ticker] => {
       log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name+" first is "+seqTickers(0).tickerCode)
-    //  sender ! "stop" //close child Actor "TickersDictActor"
-
 
       //Creation Actors for each ticker and run it all.
-
-      /*
-      val (sessFrom :CqlSession, sessTo :CqlSession) =
-      try {
-         getPairOfConnection(nodeAddressFrom,dcFrom, nodeAddressTo,dcTo)
-      } catch {
-        case c: CassConnectException => {
-          c.printStackTrace
-        }
-        case e: Throwable => throw e
-      }
-      */
-
-      seqTickers.foreach{
-        ticker =>
+      seqTickers.foreach{ticker =>
           log.info("Creation new Actor for ["+ticker.tickerCode+"]")
-         val thisTickerActor = context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
-             thisTickerActor ! ("run", ticker.tickerId, sessFrom, sessTo ,
-               prepMaxDdateFrom,
-               prepMaxDdateTo,
-               prepMaxTsFrom,
-               prepMaxTsTo)
-          // Thread.sleep(2000)
-          /** ~~~~~~~~~~~~~~~~~~~~~~~~ */
+          context.actorOf(IndividualTickerLoader.props, "IndividualTickerLoader"+ticker.tickerId)
       }
+      Thread.sleep(1000)
 
-      /*
-      Thread.sleep(5000)
       seqTickers.foreach{
         ticker =>
           log.info("run Actor IndividualTickerLoader"+ticker.tickerId+" for ["+ticker.tickerCode+"]")
-          context.actorSelection("/user/TicksLoaderManagerActor/IndividualTickerLoader"+ticker.tickerId) ! ("run", ticker.tickerId, sessFrom, sessTo)
-        /** ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+          context.actorSelection("/user/TicksLoaderManagerActor/IndividualTickerLoader"+ticker.tickerId) !
+            ("run", ticker.tickerId, ticker.tickerCode, sessFrom, sessTo ,
+              prepMaxDdateFrom,
+              prepMaxDdateTo,
+              prepMaxTsFrom,
+              prepMaxTsTo)
       }
-      */
 
-
+      Thread.sleep(5000)
       sessFrom.close()
       sessTo.close()
     }
