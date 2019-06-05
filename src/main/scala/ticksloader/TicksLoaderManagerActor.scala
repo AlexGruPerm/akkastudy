@@ -5,8 +5,6 @@ import akka.event.Logging
 import com.datastax.oss.driver.api.core.{CqlSession, DefaultConsistencyLevel}
 import com.typesafe.config.{Config, ConfigFactory}
 
-import scala.util.{Failure, Success, Try}
-
 /**
   *  This is a main Actor that manage child Actors (load ticks by individual ticker_id)
   *  Created ans called by message "begin load" from Main app.

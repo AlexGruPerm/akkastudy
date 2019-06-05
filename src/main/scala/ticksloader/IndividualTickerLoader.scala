@@ -1,49 +1,28 @@
 package ticksloader
 
 import java.time.LocalDate
-
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, BatchType, BoundStatement, DefaultBatchType, Row}
-
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BoundStatement, DefaultBatchType, Row}
 import scala.collection.JavaConverters._
-
-//import scala.collection.JavaConverters._
-//    import com.datastax.oss.driver.api.core.cql.SimpleStatement
 
 class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Actor {
   val log = Logging(context.system, this)
 
-
   def checkISClose(cass :CqlSession,sessType :String):Unit ={
     if (cass.isClosed){
       log.error("Session "+sessType+" is closed.")
-    } /*else {
-      log.info("Session "+sessType+" is opened.")
     }
-    */
   }
 
   def getCurrentState(tickerID :Int,
                       tickerCode :String,
-                      //cassFrom :CqlSession,
-                      //cassTo :CqlSession,
                       prepMaxDdateFrom :BoundStatement,
                       prepMaxDdateTo :BoundStatement,
                       prepMaxTsFrom :BoundStatement,
                       prepMaxTsTo :BoundStatement
                      ) :IndTickerLoaderState = {
-    /*
-    import java.time.Duration
-    import java.time.temporal.ChronoUnit
-    val duration :java.time.Duration = Duration.of(15, ChronoUnit.SECONDS)
-    */
-    /*
-    checkISClose(cassFrom,"cassFrom")
-    checkISClose(cassTo,"cassTo")
-    */
-
     val maxDdateTo :LocalDate = cassTo.execute(prepMaxDdateTo.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
     val maxTsTo :Long = cassTo.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
 
@@ -64,22 +43,17 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
     )
   }
 
-  def readTicksFrom(//cassFrom :CqlSession,
-                    currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
-   //if ((currState.maxTsFrom-currState.maxTsTo)/1000L > readByMinutes*60 ){
+  def readTicksFrom(currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
      cassFrom.execute(prepReadTicks
        .setInt("tickerID",currState.tickerID)
        .setLocalDate("beginDdate",currState.maxDdateTo)
        .setLong("fromTs",currState.maxTsTo)
-       .setLong("toTs",currState.maxTsTo + readByMinutes*60*1000L)).all().iterator.asScala.toSeq.map(rowToTick)
-       /*.sortBy(e => (e.ticker_id,e.db_tsunx))*/.toList
-   //} else {
-    // Nil
-   //}
+       .setLong("toTs",currState.maxTsTo + readByMinutes*60*1000L))
+       .all().iterator.asScala.toSeq.map(rowToTick)
+       .toList
   }
 
-  def saveTicks(//cassTo :CqlSession,
-                seqReadedTicks        :Seq[Tick],
+  def saveTicks(seqReadedTicks        :Seq[Tick],
                 currState             :IndTickerLoaderState,
                 prepSaveTickDb        :BoundStatement,
                 prepSaveTicksByDay    :BoundStatement,

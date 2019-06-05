@@ -27,9 +27,9 @@ class TickersDictActor(sess :CqlSession) extends Actor {
 
   override def receive: Receive = {
     case
-    "get" /*("get", sess :CqlSession)*/ => {
+    "get" => {
       log.info(" TickersDictActor - get tickers from dictionary .")
-      context.parent ! readTickersFromDb/*(sess)*/.filter(t => Seq(1).contains(t.tickerId))
+      context.parent ! readTickersFromDb.filter(t => Seq(1).contains(t.tickerId))
     }
     case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")
