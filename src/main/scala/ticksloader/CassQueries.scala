@@ -19,7 +19,8 @@ trait CassQueries {
       	               bid
                   from mts_src.ticks
                  where ticker_id = :tickerID and
-                       ddate     = :beginDdate and
+                       ddate    >= :ddateBegin and
+                       ddate    <= :ddateEnd and
                        db_tsunx >= :fromTs and
                        db_tsunx <= :toTs
                  allow filtering

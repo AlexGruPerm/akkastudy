@@ -1,11 +1,14 @@
 package ticksloader
 
-import java.time.LocalDate
+import java.time.{LocalDate, ZoneId}
+
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.{BatchStatement, BoundStatement, DefaultBatchType, Row}
+
 import scala.collection.JavaConverters._
+
 
 class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Actor {
   val log = Logging(context.system, this)
@@ -72,18 +75,32 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
   }
 
   def readTicksFrom(currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
-
     log.info("currState.maxDdateTo="+currState.maxDdateTo)
     log.info("currState.maxTsTo="+currState.maxTsTo)
 
-     cassFrom.execute(prepReadTicks
+    import java.util._
+
+    val ddateBegin :LocalDate = new Date(currState.maxTsTo).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+    val ddateEnd :LocalDate = new Date((currState.maxTsTo + readByMinutes*60*1000L)).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+
+    log.info(">>> READ TICKS INTERVAL DDATES="+ddateBegin+" - "+ ddateEnd + " TS = "+currState.maxTsTo+" - "+(currState.maxTsTo + readByMinutes*60*1000L))
+
+    val st :Seq[Tick] = cassFrom.execute(prepReadTicks
        .setInt("tickerID",currState.tickerID)
-       .setLocalDate("beginDdate",currState.maxDdateTo)
+       .setLocalDate("ddateBegin",ddateBegin)
+       .setLocalDate("ddateEnd",ddateEnd)
        .setLong("fromTs",currState.maxTsTo)
        .setLong("toTs",currState.maxTsTo + readByMinutes*60*1000L))
        .all().iterator.asScala.toSeq.map(rowToTick)
        .toList
+
+
+    st
   }
+
+
+
+
 
   def saveTicks(seqReadedTicks        :Seq[Tick],
                 currState             :IndTickerLoaderState,
@@ -93,34 +110,45 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
 
     val seqTicksSize :Long = seqReadedTicks.size
 
+    //implicit val localDateOrdering: Ordering[LocalDate] = Ordering.by(_.getDayOfYear)
     //https://docs.datastax.com/en/developer/java-driver/4.0/manual/core/statements/batch/
     //https://github.com/datastax/java-driver/blob/4.x/integration-tests/src/test/java/com/datastax/oss/driver/api/core/cql/BatchStatementIT.java
     //val partSqTicks = sqTicks.grouped(5000/*65535*/)
 
-    var builder  = BatchStatement.builder(DefaultBatchType.LOGGED)
-
-    seqReadedTicks.foreach {
-      t => builder.addStatement(prepSaveTickDb
-        .setInt("tickerID",t.ticker_id)
-        .setLocalDate("ddate",t.ddate)
-        .setLong("ts",t.ts)
-        .setLong("db_tsunx",t.db_tsunx)
-        .setDouble("ask",t.ask)
-        .setDouble("bid",t.bid)
-      )
-
+    seqReadedTicks.map(_.ddate).distinct.sortBy(_.getDayOfYear).foreach {distDdate =>
+      //log.info("LOAD Parts for ddate="+distDdate)
+      val partSqTicks = seqReadedTicks.filter(t => t.ddate == distDdate).grouped(5000)
+      partSqTicks.foreach {
+        thisPart =>
+          val builder = BatchStatement.builder(DefaultBatchType.UNLOGGED)
+          thisPart.foreach {
+            t =>
+              builder.addStatement(prepSaveTickDb
+                .setInt("tickerID", t.ticker_id)
+                .setLocalDate("ddate", t.ddate)
+                .setLong("ts", t.ts)
+                .setLong("db_tsunx", t.db_tsunx)
+                .setDouble("ask", t.ask)
+                .setDouble("bid", t.bid)
+              )
+          }
+          val batch = builder.build()
+          //log.info("Batch Part statements size = " + batch.size())
+          cassTo.execute(batch)
+          batch.clear()
+      }
     }
 
-    val batch = builder.build()
-    log.info("Batch statements size = "+batch.size())
-    cassTo.execute(batch)
-    //batch.clear()
 
-    cassTo.execute(prepSaveTicksByDay
-      .setInt("tickerID",currState.tickerID)
-      .setLocalDate("ddate",currState.maxDdateTo)
-      .setLong("pTicksCount",seqTicksSize)
-    )
+
+    seqReadedTicks.map(elm => elm.ddate).distinct.foreach {distDdate =>
+      //log.info("UPDATE COUNTER SaveTicksByDay for ddate="+distDdate+" PLUS_COUNT="+seqReadedTicks.count(tick => tick.ddate == distDdate))
+      cassTo.execute(prepSaveTicksByDay
+        .setInt("tickerID", currState.tickerID)
+        .setLocalDate("ddate", distDdate)
+        .setLong("pTicksCount", seqReadedTicks.count(tick => tick.ddate == distDdate))
+      )
+    }
 
     cassTo.execute(prepSaveTicksCntTotal
       .setInt("tickerID",currState.tickerID)

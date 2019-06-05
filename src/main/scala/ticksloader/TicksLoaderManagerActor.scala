@@ -87,6 +87,7 @@ class TicksLoaderManagerActor extends Actor with CassQueries {
     case "begin load" => context.actorOf(TickersDictActor.props(sessTo), "TickersDictActor") ! "get"
     case ("ticks_saved",tickerID :Int, tickerCode :String) =>
       log.info("TICKS_SAVED from "+sender.path.name+" FOR ["+tickerCode+"]")
+
       sender !
         ("run", tickerID, tickerCode,
           prepFirstDdateTick,
@@ -101,6 +102,7 @@ class TicksLoaderManagerActor extends Actor with CassQueries {
           prepSaveTicksByDay,
           prepSaveTicksCntTotal
         )
+
     case seqTickers :Seq[Ticker] => proccessTickers(sender,seqTickers)
     case _ => log.info(getClass.getName +" unknown message.")
   }
