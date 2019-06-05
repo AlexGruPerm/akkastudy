@@ -19,7 +19,7 @@ class TickersDictActor(sess :CqlSession) extends Actor {
      )
   }
 
-  def readTickersFromDb/*(sess :CqlSession)*/ :Seq[Ticker] = {
+  def readTickersFromDb :Seq[Ticker] = {
     import com.datastax.oss.driver.api.core.cql.SimpleStatement
     val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
     sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
@@ -38,7 +38,6 @@ class TickersDictActor(sess :CqlSession) extends Actor {
   override def postStop(): Unit = {
     log.info("postStop event in "+self.path.name)
   }
-
 }
 
 object TickersDictActor {

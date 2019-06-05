@@ -17,17 +17,16 @@ trait CassSession {
     CqlSession.builder()
       .addContactPoint(new InetSocketAddress(node, port))
       .withLocalDatacenter(dc).build()
-
 }
 
 object CassSessionFrom extends CassSession{
   val (node :String,dc :String) = getNodeAddressDc("from")
   val sess :CqlSession = createSession(node,dc)
-  def getSess:CqlSession = sess
+  def getSess :CqlSession = sess
 }
 
 object CassSessionTo extends CassSession{
   val (node :String,dc :String) = getNodeAddressDc("to")
   val sess :CqlSession = createSession(node,dc)
-  def getSess:CqlSession = sess
+  def getSess :CqlSession = sess
 }
