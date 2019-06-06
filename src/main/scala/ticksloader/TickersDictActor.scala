@@ -28,7 +28,7 @@ class TickersDictActor(cassDest :CassSessionDest.type) extends Actor {
     case
     "get" => {
       log.info(" TickersDictActor - get tickers from dictionary .")
-      context.parent ! readTickersFromDb.filter(t => Seq(1).contains(t.tickerId))
+      context.parent ! readTickersFromDb.filter(t => Seq(1/*,2,3*/).contains(t.tickerId))
     }
     case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")

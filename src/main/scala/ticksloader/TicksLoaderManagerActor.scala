@@ -2,14 +2,13 @@ package ticksloader
 
 import akka.actor.{Actor, ActorRef, Props}
 import akka.event.Logging
-import com.datastax.oss.driver.api.core.CqlSession
 import com.typesafe.config.{Config, ConfigFactory}
 
 /**
   *  This is a main Actor that manage child Actors (load ticks by individual ticker_id)
   *  Created ans called by message "begin load" from Main app.
   */
-class TicksLoaderManagerActor extends Actor /*with CassQueries*/ {
+class TicksLoaderManagerActor extends Actor {
   val log = Logging(context.system, this)
   val config :Config = ConfigFactory.load(s"application.conf")
 
@@ -23,7 +22,7 @@ class TicksLoaderManagerActor extends Actor /*with CassQueries*/ {
       (CassSessionSrc,CassSessionDest)
     } catch {
       case c: CassConnectException => {
-        log.error("ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"]")
+        log.error("ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"] Cause["+c.getCause+"]")
         throw c
       }
       case de : com.datastax.oss.driver.api.core.DriverTimeoutException =>
@@ -43,7 +42,6 @@ class TicksLoaderManagerActor extends Actor /*with CassQueries*/ {
       context.actorOf(IndividualTickerLoader.props(sessSrc,sessDest), "IndividualTickerLoader"+ticker.tickerId)
     }
 
-
     seqTickers.foreach{
       ticker =>
         log.info("run Actor IndividualTickerLoader"+ticker.tickerId+" for ["+ticker.tickerCode+"]")
@@ -51,38 +49,12 @@ class TicksLoaderManagerActor extends Actor /*with CassQueries*/ {
           ("run", ticker.tickerId, ticker.tickerCode, readByMinutes)
         Thread.sleep(300)
     }
-
   }
 
-
   override def receive: Receive = {
-    /*
-    case "stop" => {
-      context.stop(self)
-    }
-    */
+    //case "stop" => context.stop(self)
     case "begin load" => context.actorOf(TickersDictActor.props(sessDest), "TickersDictActor") ! "get"
-    case ("ticks_saved",tickerID :Int, tickerCode :String) =>
-      log.info("TICKS_SAVED from "+sender.path.name+" FOR ["+tickerCode+"]")
-
-      /*
-      --------------- 222222222222222
-      sender !
-        ("run", tickerID, tickerCode,
-          prepFirstDdateTick,
-          prepFirstTsFrom,
-          prepMaxDdateFrom,
-          prepMaxDdateTo,
-          prepMaxTsFrom,
-          prepMaxTsTo,
-          readByMinutes,
-          prepReadTicks,
-          prepSaveTickDb ,
-          prepSaveTicksByDay,
-          prepSaveTicksCntTotal
-        )
-      */
-
+    case ("ticks_saved", tickerID :Int, tickerCode :String) => sender ! ("run", tickerID, tickerCode,readByMinutes)
     case seqTickers :Seq[Ticker] => proccessTickers(sender,seqTickers)
     case _ => log.info(getClass.getName +" unknown message.")
   }
