@@ -2,12 +2,11 @@ package ticksloader
 
 import akka.actor.{Actor, Props}
 import akka.event.Logging
-import com.datastax.oss.driver.api.core.CqlSession
 import com.datastax.oss.driver.api.core.cql.Row
 
 import scala.collection.JavaConverters._
 
-class TickersDictActor(sess :CqlSession) extends Actor {
+class TickersDictActor(cassDest :CassSessionDest.type) extends Actor {
 
   val log = Logging(context.system, this)
   log.info("TickersDictActor init")
@@ -22,7 +21,7 @@ class TickersDictActor(sess :CqlSession) extends Actor {
   def readTickersFromDb :Seq[Ticker] = {
     import com.datastax.oss.driver.api.core.cql.SimpleStatement
     val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
-    sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+    cassDest.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
   }
 
   override def receive: Receive = {
@@ -41,7 +40,7 @@ class TickersDictActor(sess :CqlSession) extends Actor {
 }
 
 object TickersDictActor {
-  def props(sess :CqlSession): Props = Props(new TickersDictActor(sess))
+  def props(cassDest :CassSessionDest.type): Props = Props(new TickersDictActor(cassDest))
 }
 
 

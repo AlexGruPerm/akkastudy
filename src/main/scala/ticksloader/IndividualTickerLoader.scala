@@ -5,12 +5,12 @@ import java.time.{LocalDate, ZoneId}
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, BoundStatement, DefaultBatchType, Row}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType, Row}
 
 import scala.collection.JavaConverters._
+//import scala.collection.JavaConverters._
 
-
-class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Actor {
+class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSessionDest.type) extends Actor {
   val log = Logging(context.system, this)
 
   def checkISClose(cass :CqlSession,sessType :String):Unit ={
@@ -20,29 +20,23 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
   }
 
   def getCurrentState(tickerID :Int,
-                      tickerCode :String,
-                      prepFirstDdateTick :BoundStatement,
-                      prepFirstTsFrom :BoundStatement,
-                      prepMaxDdateFrom :BoundStatement,
-                      prepMaxDdateTo :BoundStatement,
-                      prepMaxTsFrom :BoundStatement,
-                      prepMaxTsTo :BoundStatement
+                      tickerCode :String
                      ) :IndTickerLoaderState = {
 
     val (maxDdateTo :LocalDate, maxTsTo :Long) =
-      cassTo.execute(prepMaxDdateTo.setInt("tickerID",tickerID)).one().getLocalDate("ddate") match {
+      cassDest.sess.execute(cassDest.prepMaxDdateTo.setInt("tickerID",tickerID)).one().getLocalDate("ddate") match {
       case null => {
-        val firstDdate :LocalDate = cassFrom.execute(prepFirstDdateTick.setInt("tickerID", tickerID)).one()
+        val firstDdate :LocalDate = cassSrc.sess.execute(cassSrc.prepFirstDdateTick.setInt("tickerID", tickerID)).one()
           .getLocalDate("ddate")
         log.info(">>>>>>>>>> firstDdate="+firstDdate)
-        val firstTs :Long = cassFrom.execute(prepFirstTsFrom
+        val firstTs :Long = cassSrc.sess.execute(cassSrc.prepFirstTsFrom
           .setInt("tickerID", tickerID)
           .setLocalDate("minDdate",firstDdate)).one().getLong("ts")
         log.info(">>>>>>>>>> firstTs="+firstTs)
         (firstDdate,firstTs)
       }
       case ld :LocalDate =>
-        (ld,cassTo.execute(prepMaxTsTo
+        (ld,cassDest.sess.execute(cassDest.prepMaxTsTo
           .setInt("tickerID",tickerID)
           .setLocalDate("maxDdate",ld)).one().getLong("ts"))
     }
@@ -50,14 +44,14 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
     /*
     val maxTsTo :Long = maxDdateTo match {
       case null => 0L
-      case _ => cassTo.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
+      case _ => cassDest.sess.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
     }
     */
 
-    //val maxTsTo :Long = cassTo.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
+    //val maxTsTo :Long = cassDest.sess.execute(prepMaxTsTo.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateTo)).one().getLong("ts")
 
-    val maxDdateFrom :LocalDate = cassFrom.execute(prepMaxDdateFrom.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
-    val maxTsFrom :Long = cassFrom.execute(prepMaxTsFrom.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateFrom)).one().getLong("ts")
+    val maxDdateFrom :LocalDate = cassSrc.sess.execute(cassSrc.prepMaxDdateFrom.setInt("tickerID",tickerID)).one().getLocalDate("ddate")
+    val maxTsFrom :Long = cassSrc.sess.execute(cassSrc.prepMaxTsFrom.setInt("tickerID",tickerID).setLocalDate("maxDdate",maxDdateFrom)).one().getLong("ts")
 
 
     IndTickerLoaderState(tickerID, tickerCode, maxDdateFrom, maxTsFrom, maxDdateTo, maxTsTo)
@@ -74,7 +68,7 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
     )
   }
 
-  def readTicksFrom(currState :IndTickerLoaderState, prepReadTicks :BoundStatement, readByMinutes :Int) :Seq[Tick] = {
+  def readTicksFrom(currState :IndTickerLoaderState, readByMinutes :Int) :Seq[Tick] = {
     log.info("currState.maxDdateTo="+currState.maxDdateTo)
     log.info("currState.maxTsTo="+currState.maxTsTo)
 
@@ -85,7 +79,7 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
 
     log.info(">>> READ TICKS INTERVAL DDATES="+ddateBegin+" - "+ ddateEnd + " TS = "+currState.maxTsTo+" - "+(currState.maxTsTo + readByMinutes*60*1000L))
 
-    val st :Seq[Tick] = cassFrom.execute(prepReadTicks
+    val st :Seq[Tick] = cassSrc.sess.execute(cassSrc.prepReadTicks
        .setInt("tickerID",currState.tickerID)
        .setLocalDate("ddateBegin",ddateBegin)
        .setLocalDate("ddateEnd",ddateEnd)
@@ -103,17 +97,13 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
 
 
   def saveTicks(seqReadedTicks        :Seq[Tick],
-                currState             :IndTickerLoaderState,
-                prepSaveTickDb        :BoundStatement,
-                prepSaveTicksByDay    :BoundStatement,
-                prepSaveTicksCntTotal :BoundStatement) :Long = {
+                currState             :IndTickerLoaderState) :Long = {
 
     val seqTicksSize :Long = seqReadedTicks.size
 
     //implicit val localDateOrdering: Ordering[LocalDate] = Ordering.by(_.getDayOfYear)
     //https://docs.datastax.com/en/developer/java-driver/4.0/manual/core/statements/batch/
     //https://github.com/datastax/java-driver/blob/4.x/integration-tests/src/test/java/com/datastax/oss/driver/api/core/cql/BatchStatementIT.java
-    //val partSqTicks = sqTicks.grouped(5000/*65535*/)
 
     seqReadedTicks.map(_.ddate).distinct.sortBy(_.getDayOfYear).foreach {distDdate =>
       //log.info("LOAD Parts for ddate="+distDdate)
@@ -123,7 +113,7 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
           val builder = BatchStatement.builder(DefaultBatchType.UNLOGGED)
           thisPart.foreach {
             t =>
-              builder.addStatement(prepSaveTickDb
+              builder.addStatement(cassDest.prepSaveTickDb
                 .setInt("tickerID", t.ticker_id)
                 .setLocalDate("ddate", t.ddate)
                 .setLong("ts", t.ts)
@@ -134,7 +124,7 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
           }
           val batch = builder.build()
           //log.info("Batch Part statements size = " + batch.size())
-          cassTo.execute(batch)
+          cassDest.sess.execute(batch)
           batch.clear()
       }
     }
@@ -143,14 +133,14 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
 
     seqReadedTicks.map(elm => elm.ddate).distinct.foreach {distDdate =>
       //log.info("UPDATE COUNTER SaveTicksByDay for ddate="+distDdate+" PLUS_COUNT="+seqReadedTicks.count(tick => tick.ddate == distDdate))
-      cassTo.execute(prepSaveTicksByDay
+      cassDest.sess.execute(cassDest.prepSaveTicksByDay
         .setInt("tickerID", currState.tickerID)
         .setLocalDate("ddate", distDdate)
         .setLong("pTicksCount", seqReadedTicks.count(tick => tick.ddate == distDdate))
       )
     }
 
-    cassTo.execute(prepSaveTicksCntTotal
+    cassDest.sess.execute(cassDest.prepSaveTicksCntTotal
       .setInt("tickerID",currState.tickerID)
       .setLong("pTicksCount",seqTicksSize)
     )
@@ -162,24 +152,14 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
     case ("run",
       tickerID :Int,
       tickerCode :String,
-      prepFirstDdateTick :BoundStatement,
-      prepFirstTsFrom :BoundStatement,
-      prepMaxDdateFrom :BoundStatement,
-      prepMaxDdateTo :BoundStatement,
-      prepMaxTsFrom :BoundStatement,
-      prepMaxTsTo :BoundStatement,
-      readByMinutes :Int,
-      prepReadTicks :BoundStatement,
-      prepSaveTickDb        :BoundStatement,
-      prepSaveTicksByDay    :BoundStatement,
-      prepSaveTicksCntTotal :BoundStatement
-      ) =>
+      readByMinutes :Int
+      )  =>
      log.info("Actor ("+self.path.name+") RUNNING FOR ["+tickerCode+"]")
-      val currState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode, prepFirstDdateTick, prepFirstTsFrom, prepMaxDdateFrom, prepMaxDdateTo, prepMaxTsFrom, prepMaxTsTo)
+      val currState :IndTickerLoaderState = getCurrentState(tickerID, tickerCode)
       log.info("   FOR ["+currState.tickerCode+"] STATE="+currState)
-      val seqReadedTicks :Seq[Tick] = readTicksFrom(currState, prepReadTicks, readByMinutes)
+      val seqReadedTicks :Seq[Tick] = readTicksFrom(currState, readByMinutes)
       log.info("   FOR ["+currState.tickerCode+"] READ CNT="+seqReadedTicks.size)
-      val ticksSaved :Long = saveTicks(seqReadedTicks, currState, prepSaveTickDb, prepSaveTicksByDay, prepSaveTicksCntTotal)
+      val ticksSaved :Long = saveTicks(seqReadedTicks, currState)
       log.info("   FOR ["+currState.tickerCode+"] SAVED CNT="+ticksSaved)
       context.parent ! ("ticks_saved",currState.tickerID,currState.tickerCode)
     case "stop" =>
@@ -191,7 +171,7 @@ class IndividualTickerLoader(cassFrom :CqlSession,cassTo :CqlSession) extends Ac
 }
 
 object IndividualTickerLoader {
-  def props(cassFrom :CqlSession, cassTo :CqlSession): Props = Props(new IndividualTickerLoader(cassFrom,cassTo))
+  def props(cassSrc :CassSessionSrc.type, cassDest :CassSessionDest.type): Props = Props(new IndividualTickerLoader(cassSrc,cassDest))
 }
 
 
