@@ -17,21 +17,52 @@ class TicksLoaderManagerActor extends Actor {
   */
   val readByMinutes :Int = config.getInt("loader.load-property.read-by-minutes")
 
-  val (sessSrc :CassSessionSrc.type , sessDest :CassSessionDest.type ) =
+  //todo: replace this 2 blocks on 2 methods or remove exception blocks into method.
+
+  val sessSrc :CassSessionSrc.type  =
     try {
-      (CassSessionSrc,CassSessionDest)
+      CassSessionSrc
     } catch {
       case c: CassConnectException => {
-        log.error("ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"] Cause["+c.getCause+"]")
+        log.error("[SessSource]-1 ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"] Cause["+c.getCause+"]")
         throw c
       }
       case de : com.datastax.oss.driver.api.core.DriverTimeoutException =>
-        log.error("ERROR when call getPairOfConnection ["+de.getMessage+"] ["+de.getCause+"] "+de.getExecutionInfo.getErrors)
+        log.error("[SessSource]-2 ERROR when call getPairOfConnection ["+de.getMessage+"] ["+de.getCause+"] "+de.getExecutionInfo.getErrors)
         throw de
       case e: Throwable =>
-        log.error("ERROR when call getPairOfConnection ["+e.getMessage+"]")
+        log.error("[SessSource]-3 ERROR when call getPairOfConnection ["+e.getMessage+"]")
         throw e
     }
+
+
+  if (sessSrc.sess.isClosed) {
+    log.info("Session (Source) IS CLOSED")
+  } else {
+    log.info("Session (Source) IS OPENED")
+  }
+
+  val sessDest :CassSessionDest.type =
+    try {
+      CassSessionDest
+    } catch {
+      case c: CassConnectException => {
+        log.error("[SessDest]-1 ERROR when call getPairOfConnection ex: CassConnectException ["+c.getMessage+"] Cause["+c.getCause+"]")
+        throw c
+      }
+      case de : com.datastax.oss.driver.api.core.DriverTimeoutException =>
+        log.error("[SessDest]-2 ERROR when call getPairOfConnection ["+de.getMessage+"] ["+de.getCause+"] "+de.getExecutionInfo.getErrors)
+        throw de
+      case e: Throwable =>
+        log.error("[SessDest]-3 ERROR when call getPairOfConnection ["+e.getMessage+"]")
+        throw e
+    }
+
+  if (sessDest.sess.isClosed) {
+    log.info("Session (Destination) IS CLOSED")
+  } else {
+    log.info("Session (Destination) IS OPENED")
+  }
 
   def proccessTickers(sender :ActorRef, seqTickers :Seq[Ticker]) = {
     log.info("TicksLoaderManagerActor receive ["+seqTickers.size+"] tickers from "+sender.path.name+" first is "+seqTickers(0).tickerCode)

@@ -1,13 +1,13 @@
 package ticksloader
 
-import java.time.{LocalDate, ZoneId}
+import java.time.LocalDate
 
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType, Row}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, DefaultBatchType}
 
-import scala.collection.JavaConverters._
+//import scala.collection.JavaConverters._
 //import scala.collection.JavaConverters._
 
 class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSessionDest.type) extends Actor {
@@ -37,11 +37,13 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
 
         (firstSrcDate,firstTsSrcForDate)
 
-      case ld :LocalDate =>
-          (ld,cassDest.sess.execute(cassDest.prepMaxTsDest
-            .setInt("tickerID",tickerID)
-            .setLocalDate("maxDdate",ld))
-            .one().getLong("ts"))
+      case maxDateDest :LocalDate => //(maxDateDest,cassDest.getMaxTsBydateDest(tickerID,maxDateDest))
+        {
+          val maxTsDest :Long = cassDest.getMaxTsBydateDest(tickerID,maxDateDest)
+          log.info("> maxExistDdateDest IS NOT NULL. maxDateDest="+maxDateDest+" maxTsDest="+maxTsDest)
+          (maxDateDest,maxTsDest)
+        }
+
     }
 
     val maxDdateSrc :LocalDate = cassSrc.sess.execute(cassSrc.prepMaxDdateSrc
@@ -58,37 +60,20 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
 
 
 
-  val rowToTick = (row: Row) => {
-    Tick(
-      row.getInt("ticker_id"),
-      row.getLocalDate("ddate"),
-      row.getLong("ts"),
-      row.getLong("db_tsunx"),
-      row.getDouble("ask"),
-      row.getDouble("bid")
-    )
-  }
 
   def readTicksFrom(currState :IndTickerLoaderState, readByMinutes :Int) :Seq[Tick] = {
     log.info("currState.maxDdateDest="+currState.maxDdateDest)
     log.info("currState.maxTsDest="+currState.maxTsDest)
-
+/*
     import java.util._
-
     val ddateBegin :LocalDate = new Date(currState.maxTsDest).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
     val ddateEnd :LocalDate = new Date((currState.maxTsDest + readByMinutes*60*1000L)).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+*/
+    log.info(">>> READ TICKS INTERVAL DDATES="+currState.maxDdateDest+" -  fromTS = "+currState.maxTsDest+" for "+currState.tickerID)//+" - "+(currState.maxTsDest + readByMinutes*60*1000L))
 
-    log.info(">>> READ TICKS INTERVAL DDATES="+ddateBegin+" - "+ ddateEnd + " TS = "+currState.maxTsDest+" - "+(currState.maxTsDest + readByMinutes*60*1000L))
+    val st :Seq[Tick] = Nil//cassSrc.getTicksSrc(currState.tickerID, currState.maxDdateDest, currState.maxTsDest)
 
-    val st :Seq[Tick] = cassSrc.sess.execute(cassSrc.prepReadTicksSrc
-       .setInt("tickerID",currState.tickerID)
-       .setLocalDate("ddateBegin",ddateBegin)
-       .setLocalDate("ddateEnd",ddateEnd)
-       .setLong("fromTs",currState.maxTsDest)
-       .setLong("toTs",currState.maxTsDest + readByMinutes*60*1000L))
-       .all().iterator.asScala.toSeq.map(rowToTick)
-       .toList
-
+    log.info("readed "+st.size+" ticks for "+currState.tickerID)
 
     st
   }
@@ -152,10 +137,10 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
 
       log.info("  FOR [" + tickerCode + "] STATE = " + currState)
 
-      /*
+
       val seqReadedTicks :Seq[Tick] = readTicksFrom(currState, readByMinutes)
       log.info("    FOR [" + tickerCode + "] READ CNT = " + seqReadedTicks.size)
-      */
+
       /*
       val ticksSaved :Long = saveTicks(seqReadedTicks, currState)
       log.info("      FOR ["+tickerCode+"] SAVE "+ticksSaved+" TICKS.")

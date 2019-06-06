@@ -33,21 +33,44 @@ object CassSessionSrc extends CassSession{
   val prepFirstTsSrc :BoundStatement = prepareSql(sess,sqlFirstTsFrom)
   val prepMaxDdateSrc :BoundStatement = prepareSql(sess,sqlMaxDdate)
   val prepMaxTsSrc :BoundStatement = prepareSql(sess,sqlMaxTs)
-  val prepReadTicksSrc :BoundStatement = prepareSql(sess,sqlReatTicks)
+  val prepReadTicksSrc :BoundStatement = prepareSql(sess,sqlReadTicks)
 
-  //todo: maybe add here local hash (with key - tickerId) to eliminate unnecessary DB queries.
+  //todo: maybe add here local cache (with key - tickerId) to eliminate unnecessary DB queries.
   def getMinExistDdateSrc(tickerId :Int) :LocalDate =
-    sess.execute(prepFirstDdateTickSrc.setInt("tickerID",tickerId))
+    sess.execute(prepFirstDdateTickSrc
+      .setInt("tickerID",tickerId))
       .one().getLocalDate("ddate")
 
-  //todo: maybe add here local hash (with key - tickerId+thisDate) to eliminate unnecessary DB queries.
+  //todo: maybe add here local cache (with key - tickerId+thisDate) to eliminate unnecessary DB queries.
   def getFirstTsForDateSrc(tickerId :Int, thisDate :LocalDate) :Long =
     sess.execute(prepFirstTsSrc
       .setInt("tickerID", tickerId)
       .setLocalDate("minDdate",thisDate))
       .one().getLong("ts")
 
+  /*
+  val rowToTick :(Row => Tick) = (row: Row) =>
+    Tick(
+      row.getInt("ticker_id"),
+      row.getLocalDate("ddate"),
+      row.getLong("ts"),
+      row.getLong("db_tsunx"),
+      row.getDouble("ask"),
+      row.getDouble("bid")
+    )
+  */
+
+  //def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] = Nil
+  /*
+    sess.execute(prepReadTicksSrc
+      .setInt("tickerID",tickerId)
+      .setLocalDate("readDate",thisDate)
+      .setLong("fromTs",fromTs))
+      .all().iterator.asScala.toSeq.map(rowToTick)
+      .toList*/
+
 }
+
 
 object CassSessionDest extends CassSession{
   private val (node :String,dc :String) = getNodeAddressDc("dest")
@@ -59,9 +82,15 @@ object CassSessionDest extends CassSession{
   val prepSaveTicksByDayDest :BoundStatement = prepareSql(sess,sqlSaveTicksByDay)
   val prepSaveTicksCntTotalDest :BoundStatement = prepareSql(sess,sqlSaveTicksCntTotal)
 
-
   def getMaxExistDdateDest(tickerId :Int) :LocalDate =
-    sess.execute(prepMaxDdateDest.setInt("tickerID",tickerId))
+    sess.execute(prepMaxDdateDest
+      .setInt("tickerID",tickerId))
       .one().getLocalDate("ddate")
+
+  def getMaxTsBydateDest(tickerId :Int, thisDate :LocalDate) :Long =
+    sess.execute(prepMaxTsDest
+      .setInt("tickerID",tickerId)
+      .setLocalDate("maxDdate",thisDate))
+      .one().getLong("ts")
 
 }
