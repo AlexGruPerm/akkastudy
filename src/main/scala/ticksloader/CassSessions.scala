@@ -4,8 +4,9 @@ import java.net.InetSocketAddress
 import java.time.LocalDate
 
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.BoundStatement
+import com.datastax.oss.driver.api.core.cql.{BoundStatement, Row}
 import com.typesafe.config.{Config, ConfigFactory}
+import scala.collection.JavaConverters._
 
 trait CassSession extends CassQueries {
   val config :Config = ConfigFactory.load(s"application.conf")
@@ -48,7 +49,6 @@ object CassSessionSrc extends CassSession{
       .setLocalDate("minDdate",thisDate))
       .one().getLong("ts")
 
-  /*
   val rowToTick :(Row => Tick) = (row: Row) =>
     Tick(
       row.getInt("ticker_id"),
@@ -58,17 +58,14 @@ object CassSessionSrc extends CassSession{
       row.getDouble("ask"),
       row.getDouble("bid")
     )
-  */
 
-  //def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] = Nil
-  /*
+  def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] =
     sess.execute(prepReadTicksSrc
       .setInt("tickerID",tickerId)
       .setLocalDate("readDate",thisDate)
       .setLong("fromTs",fromTs))
       .all().iterator.asScala.toSeq.map(rowToTick)
-      .toList*/
-
+      .toList
 }
 
 

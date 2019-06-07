@@ -27,6 +27,13 @@ trait CassQueries {
     * All the time read whole dataset for one partition (tickerID+readDate)
     * from db_tsunx > fromTs to the end.
     */
-  val sqlReadTicks :String = "select * from mts_src.ticks where ticker_id=:tickerID and ddate=:readDate and db_tsunx>:fromTs and allow filtering"
+  val sqlReadTicks :String =
+    """
+      select *
+        from mts_src.ticks
+       where ticker_id = :tickerID and
+             ddate     = :readDate and
+             db_tsunx > :fromTs
+       allow filtering """
 
 }

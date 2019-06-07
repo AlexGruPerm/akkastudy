@@ -59,27 +59,12 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
   }
 
 
-
-
   def readTicksFrom(currState :IndTickerLoaderState, readByMinutes :Int) :Seq[Tick] = {
-    log.info("currState.maxDdateDest="+currState.maxDdateDest)
-    log.info("currState.maxTsDest="+currState.maxTsDest)
-/*
-    import java.util._
-    val ddateBegin :LocalDate = new Date(currState.maxTsDest).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
-    val ddateEnd :LocalDate = new Date((currState.maxTsDest + readByMinutes*60*1000L)).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
-*/
-    log.info(">>> READ TICKS INTERVAL DDATES="+currState.maxDdateDest+" -  fromTS = "+currState.maxTsDest+" for "+currState.tickerID)//+" - "+(currState.maxTsDest + readByMinutes*60*1000L))
-
-    val st :Seq[Tick] = Nil//cassSrc.getTicksSrc(currState.tickerID, currState.maxDdateDest, currState.maxTsDest)
-
+    log.info(">>> READ TICKS INTERVAL DDATES="+currState.maxDdateDest+" -  fromTS = "+currState.maxTsDest+" for "+currState.tickerID)
+    val st :Seq[Tick] = cassSrc.getTicksSrc(currState.tickerID, currState.maxDdateDest, currState.maxTsDest)
     log.info("readed "+st.size+" ticks for "+currState.tickerID)
-
     st
   }
-
-
-
 
 
   def saveTicks(seqReadedTicks        :Seq[Tick],
