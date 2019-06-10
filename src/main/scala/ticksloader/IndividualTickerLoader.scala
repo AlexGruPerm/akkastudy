@@ -2,12 +2,14 @@ package ticksloader
 
 import java.time.LocalDate
 
-import akka.actor.{Actor, Props}
+import akka.actor.{Actor, ActorSystem, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.CqlSession
 
+import scala.concurrent.duration._
+
 //import scala.collection.JavaConverters._
-//import scala.collection.JavaConverters._
+//import scala.concurrent.duration._
 
 class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSessionDest.type) extends Actor {
   val log = Logging(context.system, this)
@@ -60,28 +62,43 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
 
 
   override def receive: Receive = {
-    case ("run", thisTicker :Ticker, readByMinutes :Int)  =>
-      val tickerID :Int = thisTicker.tickerId
-      val tickerCode :String = thisTicker.tickerCode
+    case ("run", thisTicker: Ticker, readByMinutes: Int) =>
+      val tickerID: Int = thisTicker.tickerId
+      val tickerCode: String = thisTicker.tickerCode
 
       log.info("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-      log.info("ACTOR ("+self.path.name+") IS RUNNING FOR ["+tickerCode+"]")
+      log.info("ACTOR (" + self.path.name + ") IS RUNNING FOR [" + tickerCode + "]")
 
-      val currState :IndTickerLoaderState = getCurrentState(thisTicker)
+      val currState: IndTickerLoaderState = getCurrentState(thisTicker)
       log.info("  FOR [" + tickerCode + "] STATE = " + currState)
 
-      if (currState.gapDays == 0 && currState.gapSeconds <= 30)
-        Thread.sleep(10000)
+      /*
+      if (currState.gapDays == 0 && currState.gapSeconds <= 60) {
+        log.info("SMALL GAP [" + currState.gapSeconds + "] SECONDS, USING PAUSE.")
+        Thread.sleep(30000)
+      }
+      */
 
-      val seqReadedTicks :Seq[Tick] = readTicks(currState, readByMinutes, thisTicker)
+      val seqReadedTicks: Seq[Tick] = readTicks(currState, readByMinutes, thisTicker)
       log.info("    FOR [" + tickerCode + "] READ CNT = " + seqReadedTicks.size)
 
-      val ticksSaved :Long = cassDest.saveTicks(seqReadedTicks, currState)
-      log.info("      FOR ["+tickerCode+"] SAVE "+ticksSaved+" TICKS.")
+      val ticksSaved: Long = cassDest.saveTicks(seqReadedTicks, currState)
+      log.info("      FOR [" + tickerCode + "] SAVE " + ticksSaved + " TICKS.")
+
+      /**
+        * If we have a gap then use pause.
+      */
+      import scala.concurrent.ExecutionContext.Implicits.global
+      if (currState.gapDays == 0 && currState.gapSeconds <= 60) {
+        log.info("SMALL GAP [" + currState.gapSeconds + "] SECONDS, USING PAUSE.")
+        val system = ActorSystem("LoadTickersSystem")
+          system.scheduler.scheduleOnce(30 seconds, context.parent, ("ticks_saved", thisTicker))
+      }
+      else {
+        context.parent ! ("ticks_saved", thisTicker)
+      }
 
 
-
-      context.parent ! ("ticks_saved",thisTicker)
     case "stop" =>
       log.info("Stopping "+self.path.name)
       context.stop(self)
