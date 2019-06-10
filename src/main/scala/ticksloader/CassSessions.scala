@@ -59,6 +59,17 @@ object CassSessionSrc extends CassSession{
       .setLocalDate("minDdate",thisDate))
       .one().getLong("ts")
 
+  def getMaxDdate(tickerID :Int) :LocalDate =
+    sess.execute(prepMaxDdateSrc
+      .setInt("tickerID",tickerID))
+      .one().getLocalDate("ddate")
+
+  def getMaxTs(tickerID :Int,thisDdate :LocalDate) :Long =
+    sess.execute(prepMaxTsSrc
+      .setInt("tickerID",tickerID)
+      .setLocalDate("maxDdate",thisDdate))
+      .one().getLong("ts")
+
   val rowToTick :(Row => Tick) = (row: Row) =>
     Tick(
       row.getInt("ticker_id"),
@@ -69,13 +80,23 @@ object CassSessionSrc extends CassSession{
       row.getDouble("bid")
     )
 
-  def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] =
-    sess.execute(prepReadTicksSrc
-      .setInt("tickerID",tickerId)
-      .setLocalDate("readDate",thisDate)
-      .setLong("fromTs",fromTs))
+  def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] = {
+   val st :Seq[Tick] = sess.execute(prepReadTicksSrc
+      .setInt("tickerID", tickerId)
+      .setLocalDate("readDate", thisDate)
+      .setLong("fromTs", fromTs))
       .all().iterator.asScala.toSeq.map(rowToTick)
       .toList
+
+    if (st.nonEmpty) st
+     else {
+      val str :Seq[Tick] = getTicksSrc(tickerId,thisDate.plusDays(1),fromTs)
+      str
+    }
+
+  }
+
+
 }
 
 

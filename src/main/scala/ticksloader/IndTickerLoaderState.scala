@@ -13,7 +13,9 @@ case class IndTickerLoaderState(tickerID     :Int,
   val gapDays :Long = gapSeconds/60/60/24
 
   override def toString: String =
-    " "+tickerID+" ["+tickerCode+"] "+" minDdateSrc=["+minSrcDate+"] ("+maxDdateDest+" -> "+maxDdateSrc+") ("+maxTsDest+" -> "+maxTsSrc+") DAYS:"+gapDays+" SECS:"+gapSeconds
+    " "+tickerID+" ["+tickerCode+"] "+" minDdateSrc=["+minSrcDate+"] DEST -> SRC ("+
+      maxDdateDest+" -> "+maxDdateSrc+") ("+
+      maxTsDest+" -> "+maxTsSrc+") DAYS:"+gapDays+" SECS:"+gapSeconds
 
 }
 

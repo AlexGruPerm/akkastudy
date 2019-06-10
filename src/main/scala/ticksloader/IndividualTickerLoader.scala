@@ -20,70 +20,41 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
 
 
   def getCurrentState(thisTicker :Ticker) :IndTickerLoaderState = {
-
     val tickerID :Int = thisTicker.tickerId
-
     val maxExistDdateDest :LocalDate = cassDest.getMaxExistDdateDest(tickerID)
-    log.info("> maxExistDdateDest = ["+maxExistDdateDest+"]")
+    val minSrcDate :LocalDate = thisTicker.minDdateSrc
+    val firstTsSrcForDate :Long = thisTicker.minTsSrc
 
-    //todo: add check on empty source data. firstSrcDate=null firstTsSrcForDate=0L
-    //todo: optimization, each load action will call this queries. cache maybe.
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    //
-    // Put this call into Actor "TickersDictActor" and new 2 fields in Ticker class
-    //
-    //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    val minSrcDate :LocalDate = thisTicker.minDdateSrc //cassSrc.getMinExistDdateSrc(tickerID)
-    log.info("> firstSrcDate = ["+minSrcDate+"] FOR="+tickerID)
-    val firstTsSrcForDate :Long = thisTicker.minTsSrc // cassSrc.getFirstTsForDateSrc(tickerID,minSrcDate)
-    log.info("> firstTsSrcForDate = ["+firstTsSrcForDate+"] for firstSrcDate=["+minSrcDate+"] FOR="+tickerID)
-
-
-
-    val (maxDdateDest :LocalDate, maxTsDest :Long) = maxExistDdateDest
-      match {
-        case null => (minSrcDate,firstTsSrcForDate)
-      case maxDateDest :LocalDate =>
-        {
-          val maxTsDest :Long = cassDest.getMaxTsBydateDest(tickerID,maxDateDest)
-          log.info("> maxExistDdateDest IS NOT NULL. maxDateDest="+maxDateDest+" maxTsDest="+maxTsDest)
-          (maxDateDest,maxTsDest)
-        }
-
+    val maxTsDest :Long = maxExistDdateDest
+    match {
+      case null => 0L
+      case maxDateDest :LocalDate => cassDest.getMaxTsBydateDest(tickerID,maxDateDest)
     }
 
-    val maxDdateSrc :LocalDate = cassSrc.sess.execute(cassSrc.prepMaxDdateSrc
-      .setInt("tickerID",tickerID))
-      .one().getLocalDate("ddate")
+    val maxDdateSrc :LocalDate = cassSrc.getMaxDdate(tickerID)
+    val maxTsSrc :Long = cassSrc.getMaxTs(tickerID,maxDdateSrc)
 
-    val maxTsSrc :Long = cassSrc.sess.execute(cassSrc.prepMaxTsSrc
-      .setInt("tickerID",tickerID)
-      .setLocalDate("maxDdate",maxDdateSrc))
-      .one().getLong("ts")
-
-    IndTickerLoaderState(tickerID, thisTicker.tickerCode, minSrcDate, maxDdateSrc, maxTsSrc, maxDdateDest, maxTsDest)
+    IndTickerLoaderState(tickerID, thisTicker.tickerCode, minSrcDate, maxDdateSrc, maxTsSrc, maxExistDdateDest, maxTsDest)
   }
 
 
-  def readTicksFrom(currState :IndTickerLoaderState, readByMinutes :Int) :Seq[Tick] = {
-    log.info(">>> READ TICKS INTERVAL DDATES="+currState.maxDdateDest+" -  fromTS = "+currState.maxTsDest+" for "+currState.tickerID)
-    val st :Seq[Tick] = cassSrc.getTicksSrc(currState.tickerID, currState.maxDdateDest, currState.maxTsDest)
-    log.info("readed "+st.size+" ticks for "+currState.tickerID)
-    st
-    /*
-    val st: Seq[Tick] =
-    (currState.maxDdateSrc,currState.maxDdateDest) match {
-      case (ddateSrc :LocalDate,ddateDest :LocalDate) if (ddateSrc == ddateDest) {
-        log.info(">>> READ TICKS INTERVAL DDATES=" + currState.maxDdateDest + " -  fromTS = " + currState.maxTsDest + " for " + currState.tickerID)
-        cassSrc.getTicksSrc(currState.tickerID, currState.maxDdateDest, currState.maxTsDest)
-      }
-      case _ =>{
+  def readTicks(currState :IndTickerLoaderState, readByMinutes :Int, thisTicker :Ticker) :Seq[Tick] = {
 
+    val st: Seq[Tick] =
+       (currState.minSrcDate,
+        currState.maxDdateSrc,
+        currState.maxDdateDest)
+    match {
+      //Load first date when abs. NO DATA EXISTS.
+      case (minSrcDate :LocalDate,maxDdateSrc :LocalDate, null)
+      => log.info("   READ TICKS INTERVAL DDATES=" + currState.maxDdateDest + " -  fromTS = " + currState.maxTsDest + " for " + currState.tickerID)
+        cassSrc.getTicksSrc(currState.tickerID, minSrcDate, thisTicker.minTsSrc)
+      case (minSrcDate :LocalDate, maxDdateSrc :LocalDate, maxDdateDest :LocalDate) if (maxDdateSrc.getDayOfYear >= maxDdateDest.getDayOfYear)
+      => cassSrc.getTicksSrc(currState.tickerID, maxDdateDest, currState.maxTsDest)
+      case _ => log.info("ANY CASE")
+        Nil
     }
-    }
-    log.info("readed " + st.size + " ticks for " + currState.tickerID)
     st
-    */
   }
 
 
@@ -99,11 +70,16 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
       val currState :IndTickerLoaderState = getCurrentState(thisTicker)
       log.info("  FOR [" + tickerCode + "] STATE = " + currState)
 
-      val seqReadedTicks :Seq[Tick] = readTicksFrom(currState, readByMinutes)
+      if (currState.gapDays == 0 && currState.gapSeconds <= 30)
+        Thread.sleep(10000)
+
+      val seqReadedTicks :Seq[Tick] = readTicks(currState, readByMinutes, thisTicker)
       log.info("    FOR [" + tickerCode + "] READ CNT = " + seqReadedTicks.size)
 
       val ticksSaved :Long = cassDest.saveTicks(seqReadedTicks, currState)
       log.info("      FOR ["+tickerCode+"] SAVE "+ticksSaved+" TICKS.")
+
+
 
       context.parent ! ("ticks_saved",thisTicker)
     case "stop" =>
