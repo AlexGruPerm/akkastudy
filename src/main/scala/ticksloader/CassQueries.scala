@@ -3,9 +3,11 @@ package ticksloader
 trait CassQueries {
 
   val sqlFirstDdateTick :String = "select min(ddate) as ddate from mts_src.ticks_count_days where ticker_id = :tickerID"
+
   val sqlFirstTsFrom :String = "select min(db_tsunx) as ts from mts_src.ticks where ticker_id = :tickerID and ddate = :minDdate allow filtering"
 
   val sqlMaxDdate :String = "select max(ddate) as ddate from mts_src.ticks_count_days where ticker_id = :tickerID and ticks_count>0 allow filtering"
+
   val sqlMaxTs :String = "select max(db_tsunx) as ts    from mts_src.ticks where ticker_id = :tickerID and ddate = :maxDdate allow filtering"
 
   val sqlSaveTickDb ="""

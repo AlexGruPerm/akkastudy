@@ -1,27 +1,40 @@
 package ticksloader
 
+import java.time.LocalDate
+
 import akka.actor.{Actor, Props}
 import akka.event.Logging
 import com.datastax.oss.driver.api.core.cql.Row
 
 import scala.collection.JavaConverters._
 
-class TickersDictActor(cassDest :CassSessionDest.type) extends Actor {
+class TickersDictActor(cassSrc :CassSessionSrc.type) extends Actor {
 
   val log = Logging(context.system, this)
   log.info("TickersDictActor init")
 
   val rowToTicker = (row: Row) => {
+    val thisTickerId :Int = row.getInt("ticker_id")
+    val thisTickerMinDdate :LocalDate = cassSrc.getMinExistDdateSrc(thisTickerId)
     Ticker(
-      row.getInt("ticker_id"),
-      row.getString("ticker_code")
+      thisTickerId,
+      row.getString("ticker_code"),
+      thisTickerMinDdate,
+      cassSrc.getFirstTsForDateSrc(thisTickerId,thisTickerMinDdate)
      )
   }
 
   def readTickersFromDb :Seq[Ticker] = {
     import com.datastax.oss.driver.api.core.cql.SimpleStatement
     val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
-    cassDest.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+    //cassSrc.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+
+
+    val seqt :Seq[Ticker] = cassSrc.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+    //hust for debug purpose
+    seqt.foreach(println)
+
+    seqt
   }
 
   override def receive: Receive = {
@@ -40,7 +53,7 @@ class TickersDictActor(cassDest :CassSessionDest.type) extends Actor {
 }
 
 object TickersDictActor {
-  def props(cassDest :CassSessionDest.type): Props = Props(new TickersDictActor(cassDest))
+  def props(cassSrc :CassSessionSrc.type): Props = Props(new TickersDictActor(cassSrc))
 }
 
 

@@ -4,6 +4,7 @@ import java.time.LocalDate
 
 case class IndTickerLoaderState(tickerID     :Int,
                                 tickerCode   :String,
+                                minSrcDate   :LocalDate,
                                 maxDdateSrc  :LocalDate,
                                 maxTsSrc     :Long,
                                 maxDdateDest :LocalDate,
@@ -12,7 +13,7 @@ case class IndTickerLoaderState(tickerID     :Int,
   val gapDays :Long = gapSeconds/60/60/24
 
   override def toString: String =
-    " "+tickerID+" ["+tickerCode+"] "+"("+maxDdateDest+" -> "+maxDdateSrc+") ("+maxTsDest+" -> "+maxTsSrc+") DAYS:"+gapDays+" SECS:"+gapSeconds
+    " "+tickerID+" ["+tickerCode+"] "+" minDdateSrc=["+minSrcDate+"] ("+maxDdateDest+" -> "+maxDdateSrc+") ("+maxTsDest+" -> "+maxTsSrc+") DAYS:"+gapDays+" SECS:"+gapSeconds
 
 }
 

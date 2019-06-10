@@ -4,11 +4,14 @@ import java.net.InetSocketAddress
 import java.time.LocalDate
 
 import com.datastax.oss.driver.api.core.CqlSession
-import com.datastax.oss.driver.api.core.cql.{BoundStatement, Row}
+import com.datastax.oss.driver.api.core.cql.{BatchStatement, BoundStatement, DefaultBatchType, Row}
 import com.typesafe.config.{Config, ConfigFactory}
+import org.slf4j.LoggerFactory
+
 import scala.collection.JavaConverters._
 
 trait CassSession extends CassQueries {
+  val log = LoggerFactory.getLogger(getClass.getName)
   val config :Config = ConfigFactory.load(s"application.conf")
   val confConnectPath :String = "loader.connection."
 
@@ -21,9 +24,16 @@ trait CassSession extends CassQueries {
       .addContactPoint(new InetSocketAddress(node, port))
       .withLocalDatacenter(dc).build()
 
+  //todo: add here try except for misprinting sqls!
   def prepareSql(sess :CqlSession,sqlText :String) :BoundStatement =
-    sess.prepare(sqlText).bind()
-
+    try {
+      sess.prepare(sqlText).bind()
+    }
+     catch {
+      case e: com.datastax.oss.driver.api.core.servererrors.SyntaxError =>
+        log.error(" prepareSQL - "+e.getMessage)
+        throw e
+    }
 }
 
 object CassSessionSrc extends CassSession{
@@ -89,5 +99,54 @@ object CassSessionDest extends CassSession{
       .setInt("tickerID",tickerId)
       .setLocalDate("maxDdate",thisDate))
       .one().getLong("ts")
+
+  def getInsertTickStatement(thisTick :Tick) =
+    prepSaveTickDbDest
+      .setInt("tickerID", thisTick.ticker_id)
+      .setLocalDate("ddate", thisTick.ddate)
+      .setLong("ts", thisTick.ts)
+      .setLong("db_tsunx", thisTick.db_tsunx)
+      .setDouble("ask", thisTick.ask)
+      .setDouble("bid", thisTick.bid)
+
+  def saveTicksCountByDay(tickerID :Int, distDdate :LocalDate, ticksCount :Long) =
+    sess.execute(prepSaveTicksByDayDest
+      .setInt("tickerID", tickerID)
+      .setLocalDate("ddate", distDdate)
+      .setLong("pTicksCount", ticksCount)
+    )
+
+  def  saveTicksCount(tickerID :Int, seqTicksSize :Long) =
+    sess.execute(
+      prepSaveTicksCntTotalDest
+        .setInt("tickerID",tickerID)
+        .setLong("pTicksCount",seqTicksSize)
+    )
+
+
+  def saveTicks(seqReadedTicks :Seq[Tick],
+                currState      :IndTickerLoaderState) :Long = {
+    val seqTicksSize :Long = seqReadedTicks.size
+    seqReadedTicks.map(_.ddate).distinct.sortBy(_.getDayOfYear).foreach {distDdate =>
+      val partSqTicks = seqReadedTicks.filter(t => t.ddate == distDdate).grouped(5000)
+      partSqTicks.foreach {
+        thisPart =>
+          val builder = BatchStatement.builder(DefaultBatchType.UNLOGGED)
+          thisPart.foreach {
+            t => builder.addStatement(getInsertTickStatement(t))
+          }
+          val batch = builder.build()
+          sess.execute(batch)
+          batch.clear()
+      }
+    }
+
+    seqReadedTicks.map(elm => elm.ddate).distinct.foreach {distDdate =>
+      saveTicksCountByDay(currState.tickerID,distDdate,seqReadedTicks.count(tick => tick.ddate == distDdate))
+    }
+
+    saveTicksCount(currState.tickerID,seqTicksSize)
+    seqTicksSize
+  }
 
 }
