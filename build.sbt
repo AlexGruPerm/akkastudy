@@ -1,10 +1,9 @@
-name := "barcl"
+name := "ticksloader"
 version := "0.1"
 scalaVersion := "2.11.8"
 version := "1.0"
 
 /**
-  * todo: try use cassandra 4.0.0 driver with replace
   *
   * Driver 3:
   * import com.datastax.driver.core.ResultSet
@@ -19,18 +18,14 @@ version := "1.0"
 */
 
 libraryDependencies ++= Seq(
-  //"com.datastax.cassandra" % "cassandra-driver-core" % "4.0.0",
+  "com.typesafe" % "config" % "1.3.4",
   "com.datastax.oss" % "java-driver-core" % "4.0.1",
   "com.typesafe.akka" %% "akka-actor" % "2.5.22",
   "ch.qos.logback" % "logback-classic" % "1.2.3",
   "org.scala-lang" % "scala-library" % "2.11.8",
   "com.madhukaraphatak" %% "java-sizeof" % "0.1",
-  "org.scalatest" %% "scalatest" % "3.0.5" % Test,
-  "com.typesafe" % "config" % "1.3.4"
+  "org.scalatest" %% "scalatest" % "3.0.5" % Test
 )
-
-//for oracle jdbc driver.
-//unmanagedJars in Compile := (file("/lib") ** "*.jar").classpath
 
 assemblyMergeStrategy in assembly := {
   case PathList("META-INF", xs @ _*) => MergeStrategy.discard
@@ -41,7 +36,7 @@ assemblyMergeStrategy in assembly := {
   case "log4j.properties" => MergeStrategy.last
   case "logback.xml" => MergeStrategy.last
   case "resources/logback.xml" => MergeStrategy.last
-  case "application.conf" => MergeStrategy.last
+  case "resources/application.conf" => MergeStrategy.last
   case "application.conf" => MergeStrategy.last
   case x => MergeStrategy.first
 }

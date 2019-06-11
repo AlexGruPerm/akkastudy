@@ -12,7 +12,8 @@ import scala.collection.JavaConverters._
 
 trait CassSession extends CassQueries {
   val log = LoggerFactory.getLogger(getClass.getName)
-  val config :Config = ConfigFactory.load(s"application.conf")
+  //val config :Config = ConfigFactory.load(s"application.conf")
+  val config :Config = ConfigFactory.load()
   val confConnectPath :String = "loader.connection."
 
   def getNodeAddressDc(path :String) :(String,String) =

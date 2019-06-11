@@ -27,21 +27,19 @@ class TickersDictActor(cassSrc :CassSessionSrc.type) extends Actor {
   def readTickersFromDb :Seq[Ticker] = {
     import com.datastax.oss.driver.api.core.cql.SimpleStatement
     val statement = SimpleStatement.newInstance("select ticker_id,ticker_code from mts_meta.tickers")
-    //cassSrc.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
-
-
+    cassSrc.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
+    /*
     val seqt :Seq[Ticker] = cassSrc.sess.execute(statement).all().iterator.asScala.toSeq.map(rowToTicker).sortBy(_.tickerId).toList
-    //hust for debug purpose
     seqt.foreach(println)
-
     seqt
+    */
   }
 
   override def receive: Receive = {
     case
     "get" => {
       log.info(" TickersDictActor - get tickers from dictionary .")
-      context.parent ! readTickersFromDb.filter(t => Seq(1/*,2,3*/).contains(t.tickerId))
+      context.parent ! readTickersFromDb//.filter(t => Seq(1).contains(t.tickerId))
     }
     case "stop" => context.stop(self)
     case _ => log.info(getClass.getName +" unknown message.")

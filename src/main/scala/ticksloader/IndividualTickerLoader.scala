@@ -80,10 +80,10 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
       */
 
       val seqReadedTicks: Seq[Tick] = readTicks(currState, readByMinutes, thisTicker)
-      log.info("    FOR [" + tickerCode + "] READ CNT = " + seqReadedTicks.size)
+      log.info("    FOR [" + tickerCode + "] READ " + seqReadedTicks.size + " TICKS")
 
       val ticksSaved: Long = cassDest.saveTicks(seqReadedTicks, currState)
-      log.info("      FOR [" + tickerCode + "] SAVE " + ticksSaved + " TICKS.")
+      log.info("      FOR [" + tickerCode + "] SAVE " + ticksSaved + " TICKS")
 
       /**
         * If we have a gap then use pause.
