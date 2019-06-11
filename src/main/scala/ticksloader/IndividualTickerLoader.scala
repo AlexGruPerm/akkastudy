@@ -40,7 +40,7 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
   }
 
 
-  def readTicks(currState :IndTickerLoaderState, readByMinutes :Int, thisTicker :Ticker) :Seq[Tick] = {
+  def readTicks(currState :IndTickerLoaderState, thisTicker :Ticker) :Seq[Tick] = {
 
     val st: Seq[Tick] =
        (currState.minSrcDate,
@@ -51,7 +51,7 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
       case (minSrcDate :LocalDate,maxDdateSrc :LocalDate, null)
       => log.info("   READ TICKS INTERVAL DDATES=" + currState.maxDdateDest + " -  fromTS = " + currState.maxTsDest + " for " + currState.tickerID)
         cassSrc.getTicksSrc(currState.tickerID, minSrcDate, thisTicker.minTsSrc)
-      case (minSrcDate :LocalDate, maxDdateSrc :LocalDate, maxDdateDest :LocalDate) if (maxDdateSrc.getDayOfYear >= maxDdateDest.getDayOfYear)
+      case (minSrcDate :LocalDate, maxDdateSrc :LocalDate, maxDdateDest :LocalDate) if maxDdateSrc.getDayOfYear >= maxDdateDest.getDayOfYear
       => cassSrc.getTicksSrc(currState.tickerID, maxDdateDest, currState.maxTsDest)
       case _ => log.info("ANY CASE")
         Nil
@@ -79,7 +79,7 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
       }
       */
 
-      val seqReadedTicks: Seq[Tick] = readTicks(currState, readByMinutes, thisTicker)
+      val seqReadedTicks: Seq[Tick] = readTicks(currState, thisTicker)
       log.info("    FOR [" + tickerCode + "] READ " + seqReadedTicks.size + " TICKS")
 
       val ticksSaved: Long = cassDest.saveTicks(seqReadedTicks, currState)

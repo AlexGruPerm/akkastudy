@@ -38,4 +38,11 @@ trait CassQueries {
              db_tsunx > :fromTs
        allow filtering """
 
+  val sqlReadTicksWholeDate :String =
+    """
+      select *
+        from mts_src.ticks
+       where ticker_id = :tickerID and
+             ddate     = :readDate
+       allow filtering """
 }

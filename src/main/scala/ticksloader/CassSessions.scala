@@ -8,6 +8,7 @@ import com.datastax.oss.driver.api.core.cql.{BatchStatement, BoundStatement, Def
 import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory
 
+import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 
 trait CassSession extends CassQueries {
@@ -39,6 +40,7 @@ trait CassSession extends CassQueries {
 
 object CassSessionSrc extends CassSession{
   private val (node :String,dc :String) = getNodeAddressDc("src")
+  log.debug("CassSessionSrc address-dc = "+node+" - "+dc)
   val sess :CqlSession = createSession(node,dc)
 
   val prepFirstDdateTickSrc :BoundStatement = prepareSql(sess,sqlFirstDdateTick)
@@ -46,6 +48,7 @@ object CassSessionSrc extends CassSession{
   val prepMaxDdateSrc :BoundStatement = prepareSql(sess,sqlMaxDdate)
   val prepMaxTsSrc :BoundStatement = prepareSql(sess,sqlMaxTs)
   val prepReadTicksSrc :BoundStatement = prepareSql(sess,sqlReadTicks)
+  val prepReadTicksSrcWholeDate :BoundStatement = prepareSql(sess, sqlReadTicksWholeDate)
 
   //todo: maybe add here local cache (with key - tickerId) to eliminate unnecessary DB queries.
   def getMinExistDdateSrc(tickerId :Int) :LocalDate =
@@ -81,20 +84,24 @@ object CassSessionSrc extends CassSession{
       row.getDouble("bid")
     )
 
-  def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] = {
-   val st :Seq[Tick] = sess.execute(prepReadTicksSrc
+
+  @tailrec def getTicksSrc(tickerId :Int, thisDate :LocalDate, fromTs :Long) :Seq[Tick] = {
+
+   val st :Seq[Tick] =
+     if (fromTs != 0L)
+     sess.execute(prepReadTicksSrc
       .setInt("tickerID", tickerId)
       .setLocalDate("readDate", thisDate)
-      .setLong("fromTs", fromTs))
-      .all().iterator.asScala.toSeq.map(rowToTick)
-      .toList
+      .setLong("fromTs", fromTs)).all().iterator.asScala.toSeq.map(rowToTick).toList
+    else
+     sess.execute(prepReadTicksSrcWholeDate
+       .setInt("tickerID", tickerId)
+       .setLocalDate("readDate", thisDate)
+     ).all().iterator.asScala.toSeq.map(rowToTick).toList
 
     if (st.nonEmpty) st
-     else {
-      val str :Seq[Tick] = getTicksSrc(tickerId,thisDate.plusDays(1),fromTs)
-      str
-    }
-
+    else
+      getTicksSrc(tickerId,thisDate.plusDays(1),0L)//fromTs)
   }
 
 
@@ -103,6 +110,7 @@ object CassSessionSrc extends CassSession{
 
 object CassSessionDest extends CassSession{
   private val (node :String,dc :String) = getNodeAddressDc("dest")
+  log.debug("CassSessionDest address-dc = "+node+" - "+dc)
   val sess :CqlSession = createSession(node,dc)
 
   val prepMaxDdateDest :BoundStatement = prepareSql(sess,sqlMaxDdate)
