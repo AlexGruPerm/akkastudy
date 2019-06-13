@@ -79,11 +79,24 @@ class IndividualTickerLoader(cassSrc :CassSessionSrc.type, cassDest :CassSession
       }
       */
 
-      val seqReadedTicks: Seq[Tick] = readTicks(currState, thisTicker)
-      log.info("    FOR [" + tickerCode + "] READ " + seqReadedTicks.size + " TICKS")
+      val seqReadedTicks: Seq[Tick] = if (currState.maxTsSrc != currState.maxTsDest) {
+        val rTicks : Seq[Tick] = readTicks(currState, thisTicker)
+        log.info("    FOR [" + tickerCode + "] READ " + rTicks.size + " TICKS")
+        rTicks
+      } else {
+        log.info("    FOR [" + tickerCode + "] NO READ TICKS, BCS: maxTsSrc == maxTsDest ")
+        Nil
+      }
 
-      val ticksSaved: Long = cassDest.saveTicks(seqReadedTicks, currState)
-      log.info("      FOR [" + tickerCode + "] SAVE " + ticksSaved + " TICKS")
+      val ticksSaved: Long = if (seqReadedTicks.nonEmpty) {
+        val tSaved :Long = cassDest.saveTicks(seqReadedTicks, currState)
+        log.info("      FOR [" + tickerCode + "] SAVE " + tSaved + " TICKS")
+        tSaved
+      } else {
+        log.info("      FOR [" + tickerCode + "] SAVE NO TICKS TO SAVE")
+        0L
+      }
+
 
       /**
         * If we have a gap then use pause.
