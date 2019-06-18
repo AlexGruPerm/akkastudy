@@ -1,5 +1,4 @@
 name := "ticksloader"
-version := "0.1"
 scalaVersion := "2.12.4"
 version := "1.0"
 
@@ -10,8 +9,9 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
   "com.datastax.oss" % "java-driver-core" % "4.0.1",
   "com.typesafe.akka" %% "akka-actor" % "2.5.22",
-  "ch.qos.logback" % "logback-classic" % "1.2.3",
-  //"org.scala-lang" % "scala-library" % "2.11.8"
+  //"ch.qos.logback" % "logback-classic" % "1.2.3",
+  //"com.typesafe.akka" %% "akka-slf4j" % "2.5.23",
+  "ch.qos.logback" % "logback-classic" % "1.3.0-alpha4",
   "org.scala-lang" % "scala-library" % "2.12.4"
 )
 

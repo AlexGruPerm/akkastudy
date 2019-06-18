@@ -47,8 +47,8 @@ object CassSessionSrc extends CassSession{
   val prepFirstTsSrc :BoundStatement = prepareSql(sess,sqlFirstTsFrom)
   val prepMaxDdateSrc :BoundStatement = prepareSql(sess,sqlMaxDdate)
   val prepMaxTsSrc :BoundStatement = prepareSql(sess,sqlMaxTs)
-  val prepReadTicksSrc :BoundStatement = prepareSql(sess,sqlReadTicks)
-  val prepReadTicksSrcWholeDate :BoundStatement = prepareSql(sess, sqlReadTicksWholeDate)
+  val prepReadTicksSrc :BoundStatement = prepareSql(sess,sqlReadTicks).setIdempotent(true)
+  val prepReadTicksSrcWholeDate :BoundStatement = prepareSql(sess, sqlReadTicksWholeDate).setIdempotent(true)
 
   //todo: maybe add here local cache (with key - tickerId) to eliminate unnecessary DB queries.
   def getMinExistDdateSrc(tickerId :Int) :LocalDate =
