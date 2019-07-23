@@ -61,7 +61,7 @@ class TicksLoaderManagerActor extends Actor {
 
       //Creation Actors for each ticker and run it all.
       seqTickers.foreach{ticker =>
-        log.info("Creation Actor for ["+ticker.tickerCode+"]")
+        log.info("Creation Actor for - ["+ticker.tickerCode+"]")
         context.actorOf(IndividualTickerLoader.props(sessSrc,sessDest), "IndividualTickerLoader"+ticker.tickerId)
       }
 
